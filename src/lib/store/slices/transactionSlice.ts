@@ -29,8 +29,8 @@ const transactionSlice = createSlice({
         type,
         status: 'pending',
         retryCount: 0,
-        createdAt: new Date(),
-        updatedAt: new Date(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
       };
       
       state.activeTransactions[transaction.id] = transaction;
@@ -46,7 +46,7 @@ const transactionSlice = createSlice({
       
       if (transaction) {
         transaction.status = status;
-        transaction.updatedAt = new Date();
+        transaction.updatedAt = Date.now();
         
         if (retryCount !== undefined) {
           transaction.retryCount = retryCount;

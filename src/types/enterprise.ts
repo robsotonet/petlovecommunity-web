@@ -14,8 +14,8 @@ export interface Transaction {
   type: TransactionType;
   status: TransactionStatus;
   retryCount: number;
-  createdAt: Date;
-  updatedAt: Date;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export type TransactionType = 
@@ -36,8 +36,8 @@ export interface IdempotencyRecord {
   key: string;
   correlationId: string;
   result: any;
-  createdAt: Date;
-  expiresAt: Date;
+  createdAt: number;
+  expiresAt: number;
 }
 
 // Enterprise API types
