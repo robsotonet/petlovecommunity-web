@@ -4,6 +4,7 @@ import transactionReducer, {
   updateTransactionStatus 
 } from '../transactionSlice'
 import { Transaction, TransactionType, TransactionStatus } from '../../../../types/enterprise'
+import { TestDataFactory, TEST_CONSTANTS } from '../../../../test/helpers/testDataFactory'
 
 // Mock the correlation utils
 vi.mock('../../../utils/correlationUtils', () => ({
@@ -117,8 +118,8 @@ describe('transactionSlice', () => {
       }))
       
       expect(Object.keys(state.activeTransactions)).toHaveLength(2)
-      expect(state.activeTransactions['txn_first'].createdAt).toBe(1234567890000)
-      expect(state.activeTransactions['txn_second'].createdAt).toBe(1234567890001)
+      expect(state.activeTransactions['txn_first'].createdAtMs).toBe(1234567890000)
+      expect(state.activeTransactions['txn_second'].createdAtMs).toBe(1234567890001)
     })
 
     it('should set default values correctly', () => {
@@ -162,8 +163,8 @@ describe('transactionSlice', () => {
       
       const transaction = newState.activeTransactions['txn_mock_transaction_id']
       expect(transaction.status).toBe('processing')
-      expect(transaction.updatedAt).toBe(1234567890001)
-      expect(transaction.createdAt).toBe(1234567890000) // Should not change
+      expect(transaction.updatedAtMs).toBe(1234567890001)
+      expect(transaction.createdAtMs).toBe(1234567890000) // Should not change
     })
 
     it('should update retry count when provided', () => {
@@ -237,45 +238,53 @@ describe('transactionSlice', () => {
         expect(newState.completedTransactions).toHaveLength(0)
       })
 
-      it('should limit completed transactions to 500', () => {
-        // Create state with 500 completed transactions
-        let state = transactionReducer(undefined, { type: '@@INIT' })
-        
-        // Add 500 completed transactions
-        for (let i = 0; i < 500; i++) {
-          vi.mocked(generateTransactionId).mockReturnValue(`txn_${i}`)
+      it('should limit completed transactions to 500 (performance benchmark)', async () => {
+        // Performance-monitored test with explicit benchmark
+        const { result, executionTimeMs, withinThreshold } = await TestDataFactory.measureTestPerformance(async () => {
+          // Create initial state with efficiently generated 500 completed transactions
+          const completedTransactions = TestDataFactory.generateMockTransactions(
+            TEST_CONSTANTS.MAX_TRANSACTIONS,
+            { 
+              status: 'completed',
+              transactionIdPrefix: 'txn',
+              correlationIdPrefix: 'plc',
+              idempotencyKeyPrefix: 'idem'
+            }
+          );
+          
+          // Create state directly with completed transactions (bypassing expensive loop)
+          let state = transactionReducer(undefined, { type: '@@INIT' })
+          state = {
+            ...state,
+            completedTransactions
+          }
+          
+          expect(state.completedTransactions).toHaveLength(500)
+          
+          // Add one more - should still be 500 but oldest should be removed
+          vi.mocked(generateTransactionId).mockReturnValue('txn_501')
           
           state = transactionReducer(state, startTransaction({
             type: 'pet_favorite',
-            correlationId: `plc_${i}`,
-            idempotencyKey: `idem_${i}`
+            correlationId: 'plc_501',
+            idempotencyKey: 'idem_501'
           }))
           
           state = transactionReducer(state, updateTransactionStatus({
-            transactionId: `txn_${i}`,
+            transactionId: 'txn_501',
             status: 'completed'
           }))
-        }
-        
-        expect(state.completedTransactions).toHaveLength(500)
-        
-        // Add one more - should still be 500 but oldest should be removed
-        vi.mocked(generateTransactionId).mockReturnValue('txn_501')
-        
-        state = transactionReducer(state, startTransaction({
-          type: 'pet_favorite',
-          correlationId: 'plc_501',
-          idempotencyKey: 'idem_501'
-        }))
-        
-        state = transactionReducer(state, updateTransactionStatus({
-          transactionId: 'txn_501',
-          status: 'completed'
-        }))
-        
-        expect(state.completedTransactions).toHaveLength(500)
-        expect(state.completedTransactions[0].id).toBe('txn_1') // First removed
-        expect(state.completedTransactions[499].id).toBe('txn_501') // New added
+          
+          expect(state.completedTransactions).toHaveLength(500)
+          expect(state.completedTransactions[0].id).toBe('txn_1') // First removed (txn_0)
+          expect(state.completedTransactions[499].id).toBe('txn_501') // New added
+          
+          return state;
+        }, TEST_CONSTANTS.MAX_SLOW_TEST_MS); // Max 10ms threshold
+
+        // Performance assertion - test must complete within threshold
+        expect(withinThreshold).toBe(true);
+        expect(executionTimeMs).toBeLessThan(TEST_CONSTANTS.MAX_SLOW_TEST_MS);
       })
     })
   })

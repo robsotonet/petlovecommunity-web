@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EnterpriseLifecycleManager, enterpriseLifecycleManager } from '../EnterpriseLifecycleManager';
+import { MockTimeUtils, TEST_CONSTANTS } from '../../../test/helpers/testDataFactory';
 
 // Mock the dependencies
 vi.mock('../IdempotencyService', () => ({
@@ -44,6 +45,8 @@ describe('EnterpriseLifecycleManager', () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    // Reset singleton state for proper test isolation
+    EnterpriseLifecycleManager.resetForTesting();
   });
 
   describe('Singleton Pattern', () => {
@@ -169,17 +172,29 @@ describe('EnterpriseLifecycleManager', () => {
     });
 
     it('should calculate uptime correctly', async () => {
-      const startTime = Date.now();
+      // Use controlled time for reliable, fast testing
+      const startTime = MockTimeUtils.getMockTime();
+      const dateNowSpy = vi.spyOn(Date, 'now')
+        .mockReturnValue(startTime); // Initial time for service start
+      
       await manager.startServices();
       
-      // Wait a small amount of time
-      await new Promise(resolve => setTimeout(resolve, 50));
+      // Advance mock time to simulate elapsed duration
+      const elapsedTime = startTime + TEST_CONSTANTS.UPTIME_CALCULATION_DELAY_MS;
+      dateNowSpy.mockReturnValue(elapsedTime); // Later time for metrics calculation
       
       const metrics = manager.getMetrics();
       
       expect(metrics.uptime.IdempotencyService).toBeGreaterThan(0);
       expect(metrics.uptime.TransactionManager).toBeGreaterThan(0);
       expect(metrics.uptime.IdempotencyMiddleware).toBeGreaterThan(0);
+      
+      // Verify uptime matches the expected duration
+      expect(metrics.uptime.IdempotencyService).toBe(TEST_CONSTANTS.UPTIME_CALCULATION_DELAY_MS);
+      expect(metrics.uptime.TransactionManager).toBe(TEST_CONSTANTS.UPTIME_CALCULATION_DELAY_MS);
+      expect(metrics.uptime.IdempotencyMiddleware).toBe(TEST_CONSTANTS.UPTIME_CALCULATION_DELAY_MS);
+      
+      dateNowSpy.mockRestore();
     });
 
     it('should return zero uptime for stopped services', () => {
@@ -285,6 +300,14 @@ describe('EnterpriseLifecycleManager', () => {
 
   describe('Console Logging', () => {
     it('should log service operations in development', async () => {
+      // Mock NODE_ENV to simulate development environment
+      const originalNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'development';
+      
+      // Reset manager to pick up new environment
+      EnterpriseLifecycleManager.resetForTesting();
+      manager = EnterpriseLifecycleManager.getInstance();
+      
       const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
       
       await manager.startServices();
@@ -295,6 +318,9 @@ describe('EnterpriseLifecycleManager', () => {
       );
       
       consoleSpy.mockRestore();
+      
+      // Restore original NODE_ENV
+      process.env.NODE_ENV = originalNodeEnv;
     });
 
     it('should log errors to console', async () => {

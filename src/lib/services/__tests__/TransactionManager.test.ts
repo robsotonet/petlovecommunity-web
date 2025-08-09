@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { TransactionManager, transactionManager } from '../TransactionManager'
 import { Transaction, TransactionType, TransactionStatus } from '../../../types/enterprise'
 import { mockTimers, createAsyncOperation, createFailingAsyncOperation } from '../../../test/utils'
+import { MockTimerUtils, TEST_CONSTANTS } from '../../../test/helpers/testDataFactory'
 
 describe('TransactionManager', () => {
   let manager: TransactionManager
@@ -128,60 +129,47 @@ describe('TransactionManager', () => {
       expect(mockOperation).toHaveBeenCalledTimes(3)
     })
 
-    it('should respect retry limits based on transaction type', async () => {
-      // Mock setTimeout to execute immediately for this test
-      const originalSetTimeout = globalThis.setTimeout
-      vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn, delay) => {
-        if (typeof fn === 'function') {
-          // Execute immediately
-          Promise.resolve().then(() => fn())
-        }
-        return 1 as any
+    // Parameterized testing for retry limits - cleaner and more explicit
+    it.each([
+      { type: 'pet_favorite', expectedRetries: 3 },
+      { type: 'adoption_application', expectedRetries: 5 },
+      { type: 'service_booking', expectedRetries: 5 },
+      { type: 'event_rsvp', expectedRetries: 3 },
+      { type: 'social_interaction', expectedRetries: 2 },
+    ] as const)('should respect retry limit of $expectedRetries for $type transactions', async ({ type, expectedRetries }) => {
+      // Use reusable timer utility for immediate execution
+      const restoreTimers = MockTimerUtils.mockSetTimeoutImmediate();
+
+      let attemptCount = 0
+      const mockOperation = vi.fn(() => {
+        attemptCount++
+        return Promise.reject(new Error(`Always fails`))
       })
 
-      const retryLimits = {
-        pet_favorite: 3,
-        adoption_application: 5,
-        service_booking: 5, 
-        event_rsvp: 3,
-        social_interaction: 2,
-      }
+      await expect(
+        manager.executeTransaction(
+          type,
+          `corr-${type}`,
+          `idem-${type}`,
+          mockOperation
+        )
+      ).rejects.toThrow('Always fails')
 
-      for (const [type, expectedRetries] of Object.entries(retryLimits)) {
-        let attemptCount = 0
-        const mockOperation = vi.fn(() => {
-          attemptCount++
-          return Promise.reject(new Error(`Always fails`))
-        })
+      // Should attempt initial + retries
+      expect(attemptCount).toBe(expectedRetries + 1)
 
-        await expect(
-          manager.executeTransaction(
-            type as TransactionType,
-            `corr-${type}`,
-            `idem-${type}`,
-            mockOperation
-          )
-        ).rejects.toThrow('Always fails')
-
-        // Should attempt initial + retries
-        expect(attemptCount).toBe(expectedRetries + 1)
-        attemptCount = 0 // Reset for next iteration
-      }
-
-      // Restore setTimeout
-      globalThis.setTimeout = originalSetTimeout
+      // Restore using utility
+      restoreTimers();
     })
 
     it('should calculate correct exponential backoff delays', async () => {
       const mockOperation = vi.fn(createFailingAsyncOperation(new Error('Always fails')))
-      const delays: number[] = []
       
-      // Mock setTimeout to capture delays
-      const originalSetTimeout = globalThis.setTimeout
-      vi.spyOn(globalThis, 'setTimeout').mockImplementation((fn, delay) => {
-        delays.push(delay)
-        return originalSetTimeout(fn, 0) // Execute immediately for test
-      })
+      // Use reusable timer utility to capture delays
+      const { capturedDelays, restore } = MockTimerUtils.mockSetTimeoutCustom((fn) => {
+        // Execute immediately for test
+        Promise.resolve().then(() => fn());
+      });
 
       await expect(
         manager.executeTransaction(
@@ -194,8 +182,10 @@ describe('TransactionManager', () => {
 
       // Should have delays: 2s, 4s, 8s for 3 retries (new exponential backoff)
       // Filter out non-retry delays (0s and other test artifacts)
-      const retryDelays = delays.filter(d => d >= 2000 && d <= 32000)
+      const retryDelays = capturedDelays.filter(d => d >= 2000 && d <= 32000)
       expect(retryDelays).toEqual([2000, 4000, 8000])
+      
+      restore();
     })
 
     it('should cap retry delay at 32 seconds', async () => {

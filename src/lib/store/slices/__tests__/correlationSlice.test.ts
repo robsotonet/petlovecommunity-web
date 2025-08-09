@@ -5,6 +5,7 @@ import correlationReducer, {
   setUserId 
 } from '../correlationSlice'
 import { CorrelationContext } from '../../../../types/enterprise'
+import { TestDataFactory, MockTimeUtils, TEST_CONSTANTS } from '../../../../test/helpers/testDataFactory'
 
 // Mock the correlation utils
 vi.mock('../../../utils/correlationUtils', () => ({
@@ -123,8 +124,8 @@ describe('correlationSlice', () => {
         setCorrelationContext({}) // Empty update
       )
       
-      expect(newState.currentContext.timestamp).toBe(1234567890001)
-      expect(newState.currentContext.timestamp).not.toBe(initialState.currentContext.timestamp)
+      expect(newState.currentContext.timestampMs).toBe(1234567890001)
+      expect(newState.currentContext.timestampMs).not.toBe(initialState.currentContext.timestampMs)
     })
 
     it('should limit history to 100 items', () => {
@@ -230,7 +231,7 @@ describe('correlationSlice', () => {
         createChildCorrelation({ userId: 'childUser' })
       )
       
-      expect(newState.currentContext.timestamp).toBe(1234567890000)
+      expect(newState.currentContext.timestampMs).toBe(1234567890000)
     })
   })
 
@@ -368,20 +369,22 @@ describe('correlationSlice', () => {
       expect(newState.currentContext.correlationId).toBeNull()
     })
 
-    it('should handle very large history without performance issues', () => {
+    it('should handle very large history without performance issues', async () => {
       let state = correlationReducer(undefined, { type: '@@INIT' })
       
-      // Add 150 contexts quickly
-      const startTime = Date.now()
-      for (let i = 0; i < 150; i++) {
-        state = correlationReducer(state, setCorrelationContext({ 
-          userId: `user${i}` 
-        }))
-      }
-      const endTime = Date.now()
+      // Add 150 contexts quickly using standardized performance measurement
+      const { result: finalState, executionTimeMs, withinThreshold } = await TestDataFactory.measureTestPerformance(() => {
+        let currentState = state;
+        for (let i = 0; i < 150; i++) {
+          currentState = correlationReducer(currentState, setCorrelationContext({ 
+            userId: `user${i}` 
+          }));
+        }
+        return currentState;
+      }, 100); // Max 100ms threshold
       
-      expect(endTime - startTime).toBeLessThan(100) // Should complete quickly
-      expect(state.history).toHaveLength(100) // Should be limited to 100
+      expect(withinThreshold).toBe(true); // Should complete within performance threshold
+      expect(finalState.history).toHaveLength(100); // Should be limited to 100
     })
 
     it('should maintain immutability', () => {

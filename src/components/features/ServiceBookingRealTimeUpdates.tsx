@@ -5,6 +5,9 @@ import { useServiceBookingEvents, useSignalRGroups } from '@/components/enterpri
 import { ServiceBookingStatusChangedEvent } from '@/types/signalr';
 import { useCorrelation } from '@/hooks/useCorrelation';
 
+// Animation duration constant for consistency across the component
+const STATUS_UPDATE_ANIMATION_DURATION_MS = 1000;
+
 // Service booking status update component
 interface ServiceBookingRealTimeUpdatesProps {
   bookingId: string;
@@ -118,7 +121,7 @@ export function ServiceBookingStatusIndicator({
       setLastUpdateTime(event.timestampMs);
       
       // Remove updating indicator after animation
-      setTimeout(() => setIsUpdating(false), 1000);
+      setTimeout(() => setIsUpdating(false), STATUS_UPDATE_ANIMATION_DURATION_MS);
     }
   }, [bookingId]);
 

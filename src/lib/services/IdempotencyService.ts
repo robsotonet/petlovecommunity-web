@@ -3,6 +3,7 @@ import { IdempotencyRecord } from '../../types/enterprise';
 export class IdempotencyService {
   private static instance: IdempotencyService;
   private records: Map<string, IdempotencyRecord> = new Map();
+  private persistedKeys: Set<string> = new Set(); // Track localStorage keys for performance
   
   constructor() {
     // Load persisted records on startup
@@ -87,7 +88,9 @@ export class IdempotencyService {
     // Also remove from persisted storage
     if (typeof window !== 'undefined') {
       try {
-        window.localStorage.removeItem(`plc_idempotency_${idempotencyKey}`);
+        const storageKey = `plc_idempotency_${idempotencyKey}`;
+        window.localStorage.removeItem(storageKey);
+        this.persistedKeys.delete(storageKey); // Remove from tracked keys
       } catch (error) {
         console.warn('Failed to remove persisted idempotency record:', error);
       }
@@ -112,7 +115,9 @@ export class IdempotencyService {
         // Also clean up persisted version
         if (typeof window !== 'undefined') {
           try {
-            window.localStorage.removeItem(`plc_idempotency_${key}`);
+            const storageKey = `plc_idempotency_${key}`;
+            window.localStorage.removeItem(storageKey);
+            this.persistedKeys.delete(storageKey); // Remove from tracked keys
             persistedCleanedCount++;
           } catch (error) {
             console.warn('Failed to clean up persisted idempotency record:', error);
@@ -121,12 +126,11 @@ export class IdempotencyService {
       }
     }
     
-    // Also scan and clean directly from localStorage (in case of orphaned records)
+    // Also scan and clean directly from localStorage using tracked keys
     if (typeof window !== 'undefined') {
       try {
-        const keys = Object.keys(window.localStorage).filter(key => 
-          key.startsWith('plc_idempotency_')
-        );
+        // Create a copy to avoid issues if we modify the set during iteration
+        const keys = Array.from(this.persistedKeys);
         
         for (const key of keys) {
           try {
@@ -135,12 +139,14 @@ export class IdempotencyService {
               const parsed = JSON.parse(stored);
               if (parsed.expiresAtMs <= now) {
                 window.localStorage.removeItem(key);
+                this.persistedKeys.delete(key); // Remove from tracked keys
                 persistedCleanedCount++;
               }
             }
-          } catch (error) {
+          } catch {
             // Remove corrupt records
             window.localStorage.removeItem(key);
+            this.persistedKeys.delete(key); // Remove from tracked keys
             persistedCleanedCount++;
           }
         }
@@ -191,6 +197,7 @@ export class IdempotencyService {
         };
         
         window.localStorage.setItem(key, JSON.stringify(persistedData));
+        this.persistedKeys.add(key); // Track the key for performance
       } catch (error) {
         console.warn('Failed to persist idempotency record:', error);
       }
@@ -200,6 +207,7 @@ export class IdempotencyService {
   private loadPersistedRecords(): void {
     if (typeof window !== 'undefined') {
       try {
+        // Initial scan to populate tracked keys (acceptable on startup)
         const keys = Object.keys(window.localStorage).filter(key => 
           key.startsWith('plc_idempotency_')
         );
@@ -222,6 +230,7 @@ export class IdempotencyService {
               // Only load if not expired
               if (record.expiresAtMs > now) {
                 this.records.set(record.key, record);
+                this.persistedKeys.add(key); // Track the key for future operations
                 loadedCount++;
               } else {
                 // Remove expired persisted record
@@ -263,9 +272,11 @@ export class IdempotencyService {
           // Add back to in-memory cache if still valid
           if (record.expiresAtMs > Date.now()) {
             this.records.set(idempotencyKey, record);
+            this.persistedKeys.add(key); // Track the key for future operations
           } else {
             // Clean up expired persisted record
             window.localStorage.removeItem(key);
+            this.persistedKeys.delete(key); // Remove from tracked keys
             record = undefined;
           }
         }

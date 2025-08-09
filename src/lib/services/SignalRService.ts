@@ -181,6 +181,17 @@ export class SignalRService implements ISignalRService {
         handlers.clear();
         console.log(`[SignalR] All handlers cleared for ${eventType}`);
       }
+      
+      // Also call the connection's off method if connection exists
+      if (this.connection) {
+        if (handler) {
+          // For specific handler removal, we call connection.off with the handler
+          this.connection.off(eventType, handler as any);
+        } else {
+          // For clearing all handlers, we call connection.off without handler
+          this.connection.off(eventType);
+        }
+      }
     }
   }
 
@@ -318,12 +329,13 @@ export const createSignalRService = (
   config?: Partial<SignalRConfig>,
   correlationService?: CorrelationService
 ): SignalRService => {
-  if (!signalRServiceInstance && correlationService) {
-    signalRServiceInstance = new SignalRService(config, correlationService);
+  // Always validate that correlationService is provided
+  if (!correlationService) {
+    throw new Error('SignalRService requires CorrelationService instance');
   }
   
   if (!signalRServiceInstance) {
-    throw new Error('SignalRService requires CorrelationService instance');
+    signalRServiceInstance = new SignalRService(config, correlationService);
   }
   
   return signalRServiceInstance;

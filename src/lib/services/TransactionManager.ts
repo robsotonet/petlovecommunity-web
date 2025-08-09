@@ -201,10 +201,14 @@ export class TransactionManager {
     });
   }
 
+  // Retry delay constants for maintainability and configurability
+  private static readonly BASE_RETRY_DELAY_MS = 2000; // Base delay: 2 seconds
+  private static readonly MAX_RETRY_DELAY_MS = 32000; // Max delay: 32 seconds
+
   private calculateRetryDelay(retryCount: number): number {
     // Enhanced exponential backoff: 2s, 4s, 8s, 16s, 32s (capped at 32s)
-    const baseDelayMs = 2000;
-    return Math.min(baseDelayMs * Math.pow(2, retryCount), 32000);
+    const baseDelayMs = TransactionManager.BASE_RETRY_DELAY_MS;
+    return Math.min(baseDelayMs * Math.pow(2, retryCount), TransactionManager.MAX_RETRY_DELAY_MS);
   }
 
   // Enhanced timeout handling

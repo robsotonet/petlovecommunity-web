@@ -591,7 +591,12 @@ describe('useSignalR Hook Integration Tests', () => {
         await result.current.connect()
       })
 
-      unmount()
+      // Unmount and wait for async promise rejection to be handled
+      await act(async () => {
+        unmount()
+        // Wait for the promise rejection to be processed
+        await new Promise(resolve => setTimeout(resolve, 0))
+      })
 
       // Should not throw during cleanup
       expect(consoleErrorSpy).toHaveBeenCalledWith(

@@ -52,8 +52,14 @@ describe('SignalRService', () => {
     mockConnection = {
       connectionId: 'test-connection-id',
       state: HubConnectionState.Disconnected,
-      start: vi.fn().mockResolvedValue(undefined),
-      stop: vi.fn().mockResolvedValue(undefined),
+      start: vi.fn().mockImplementation(async () => {
+        mockConnection.state = HubConnectionState.Connected;
+        return Promise.resolve();
+      }),
+      stop: vi.fn().mockImplementation(async () => {
+        mockConnection.state = HubConnectionState.Disconnected;
+        return Promise.resolve();
+      }),
       invoke: vi.fn().mockResolvedValue(undefined),
       on: vi.fn(),
       off: vi.fn(),

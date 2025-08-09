@@ -272,6 +272,18 @@ export class EnterpriseLifecycleManager {
   getService(serviceName: string): ServiceStatus | undefined {
     return this.services.get(serviceName);
   }
+
+  /**
+   * Reset singleton state - for testing purposes only
+   * @internal
+   */
+  static resetForTesting(): void {
+    if (EnterpriseLifecycleManager.instance) {
+      EnterpriseLifecycleManager.instance.services.clear();
+      EnterpriseLifecycleManager.instance.isShuttingDown = false;
+      EnterpriseLifecycleManager.instance.initializeServices();
+    }
+  }
 }
 
 // Export singleton instance

@@ -5,6 +5,9 @@ import { usePetAdoptionEvents, useSignalRGroups } from '@/components/enterprise'
 import { PetAdoptionStatusChangedEvent } from '@/types/signalr';
 import { useCorrelation } from '@/hooks/useCorrelation';
 
+// Animation duration constant for consistency across the component
+const STATUS_UPDATE_ANIMATION_DURATION_MS = 1000;
+
 // Pet adoption status update component
 interface PetAdoptionRealTimeUpdatesProps {
   petId: string;
@@ -111,7 +114,7 @@ export function PetAdoptionStatusIndicator({
       setLastUpdateTime(Date.now());
       
       // Remove updating indicator after animation
-      setTimeout(() => setIsUpdating(false), 1000);
+      setTimeout(() => setIsUpdating(false), STATUS_UPDATE_ANIMATION_DURATION_MS);
     }
   }, [petId]);
 
