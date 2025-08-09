@@ -3,25 +3,124 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Pet Love Community Design System Colors */
+  --color-coral: #FF6B6B;
+  --color-coral-light: #FF8E8E;
+  --color-coral-dark: #E55555;
+  --color-teal: #4ECDC4;
+  --color-teal-light: #6ED4CC;
+  --color-teal-dark: #3BB5B0;
+  --color-teal-bg: #E8F8F7;
+  --color-beige: #F7FFF7;
+  --color-midnight: #1A535C;
+  
+  /* Text hierarchy */
+  --color-text-secondary: #2C6B73;
+  --color-text-tertiary: #6C757D;
+  
+  /* Semantic colors */
+  --color-success: #00B894;
+  --color-warning: #FDCB6E;
+  --color-error: #E74C3C;
+  --color-info: #74B9FF;
+  
+  /* Component colors */
+  --color-white: #FFFFFF;
+  --color-border: #E8F8F7;
+  --color-shadow: rgba(26, 83, 92, 0.08);
+  
+  /* Legacy variables for compatibility */
+  --background: #F7FFF7;
+  --foreground: #1A535C;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --color-beige: #1A1A1A;
+    --color-midnight: #FFFFFF;
+    --color-border: #333333;
+    --background: #1A1A1A;
+    --foreground: #FFFFFF;
+    /* Coral and teal remain unchanged for brand consistency */
   }
 }
 
+/* Base styles */
 body {
-  color: var(--foreground);
-  background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  color: var(--color-midnight);
+  background: var(--color-beige);
+  font-feature-settings: "rlig" 1, "calt" 1;
 }
 
+/* Utility classes */
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+  
+  .transition-brand {
+    transition: all 0.3s ease;
+  }
+}
+
+/* Component base styles */
+@layer components {
+  .btn-adoption {
+    @apply bg-coral hover:bg-coral-light active:bg-coral-dark;
+    @apply text-white font-medium;
+    @apply px-6 py-3 rounded-lg;
+    @apply transition-brand;
+    @apply shadow-button hover:shadow-card;
+  }
+  
+  .btn-service {
+    @apply bg-teal hover:bg-teal-light active:bg-teal-dark;
+    @apply text-white font-medium;
+    @apply px-6 py-3 rounded-lg;
+    @apply transition-brand;
+    @apply shadow-button hover:shadow-card;
+  }
+  
+  .btn-secondary {
+    @apply bg-transparent border-2 border-teal text-teal;
+    @apply hover:bg-teal hover:text-white;
+    @apply font-medium px-6 py-3 rounded-lg;
+    @apply transition-brand;
+  }
+  
+  .card-pet {
+    @apply bg-white border-l-4 border-l-coral;
+    @apply rounded-xl p-6;
+    @apply shadow-card hover:shadow-card-hover;
+    @apply transition-brand;
+  }
+  
+  .card-service {
+    @apply bg-white border border-teal-bg;
+    @apply rounded-xl p-6;
+    @apply shadow-card hover:shadow-card-hover;
+    @apply transition-brand;
+  }
+  
+  .card-default {
+    @apply bg-white border border-border;
+    @apply rounded-xl p-6;
+    @apply shadow-card hover:shadow-card-hover;
+    @apply transition-brand;
+  }
+  
+  .input-field {
+    @apply w-full px-4 py-3 rounded-lg border border-border;
+    @apply focus:outline-none focus:border-teal focus:ring-2 focus:ring-teal/20;
+    @apply bg-white text-midnight placeholder-text-tertiary;
+    @apply transition-brand;
+  }
+  
+  .input-field:focus {
+    @apply border-teal;
+  }
+  
+  .input-field.error {
+    @apply border-error focus:border-error focus:ring-error/20;
   }
 }
