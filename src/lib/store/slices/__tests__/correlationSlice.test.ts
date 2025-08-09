@@ -30,13 +30,13 @@ describe('correlationSlice', () => {
         currentContext: expect.objectContaining({
           correlationId: expect.any(String),
           sessionId: expect.any(String),
-          timestamp: expect.any(Number),
+          timestampMs: expect.any(Number),
         }),
         history: expect.arrayContaining([
           expect.objectContaining({
             correlationId: expect.any(String),
             sessionId: expect.any(String),
-            timestamp: expect.any(Number),
+            timestampMs: expect.any(Number),
           })
         ])
       })
@@ -77,7 +77,7 @@ describe('correlationSlice', () => {
         ...initialState.currentContext,
         userId: 'user123',
         correlationId: 'plc_custom_correlation',
-        timestamp: 1234567890000, // Updated timestamp
+        timestampMs: 1234567890000, // Updated timestamp
       })
     })
 
@@ -95,7 +95,7 @@ describe('correlationSlice', () => {
         correlationId: originalCorrelationId,
         sessionId: originalSessionId,
         userId: 'user456',
-        timestamp: 1234567890000,
+        timestampMs: 1234567890000,
       })
     })
 
@@ -315,7 +315,7 @@ describe('correlationSlice', () => {
         parentCorrelationId: 'plc_parent',
         sessionId: 'sess_mock_session_id',
         userId: 'updatedChildUser',
-        timestamp: 1234567890002,
+        timestampMs: 1234567890002,
       })
       
       // Verify history contains all contexts
@@ -351,7 +351,7 @@ describe('correlationSlice', () => {
       
       expect(newState.currentContext).toMatchObject({
         ...initialState.currentContext,
-        timestamp: 1234567890000, // Updated timestamp
+        timestampMs: 1234567890000, // Updated timestamp
       })
     })
 

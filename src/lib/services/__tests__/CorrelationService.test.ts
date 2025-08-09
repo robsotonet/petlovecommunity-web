@@ -138,7 +138,7 @@ describe('CorrelationService', () => {
       
       const updated = service.getContext(context.correlationId)
       expect(updated?.userId).toBe('updatedUser')
-      expect(updated?.timestamp).toBe(1234567890001)
+      expect(updated?.timestampMs).toBe(1234567890001)
       expect(updated?.correlationId).toBe(context.correlationId) // Unchanged
     })
 
@@ -169,7 +169,7 @@ describe('CorrelationService', () => {
       expect(headers).toEqual({
         'X-Correlation-ID': context.correlationId,
         'X-Session-ID': context.sessionId,
-        'X-Timestamp': context.timestamp.toString(),
+        'X-Timestamp': context.timestampMs.toString(),
         'X-User-ID': 'user123',
       })
     })
@@ -181,7 +181,7 @@ describe('CorrelationService', () => {
       expect(headers).toEqual({
         'X-Correlation-ID': context.correlationId,
         'X-Session-ID': context.sessionId,
-        'X-Timestamp': context.timestamp.toString(),
+        'X-Timestamp': context.timestampMs.toString(),
       })
       expect(headers['X-User-ID']).toBeUndefined()
     })
@@ -194,7 +194,7 @@ describe('CorrelationService', () => {
       expect(headers).toEqual({
         'X-Correlation-ID': childContext.correlationId,
         'X-Session-ID': childContext.sessionId,
-        'X-Timestamp': childContext.timestamp.toString(),
+        'X-Timestamp': childContext.timestampMs.toString(),
         'X-User-ID': 'childUser',
         'X-Parent-Correlation-ID': parentContext.correlationId,
       })

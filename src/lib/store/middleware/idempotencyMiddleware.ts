@@ -113,9 +113,4 @@ export const idempotencyCleanup = {
   }
 };
 
-// Hot module replacement cleanup for development
-if (typeof module !== 'undefined' && module.hot) {
-  module.hot.dispose(() => {
-    stopCleanup();
-  });
-}
+// Note: Hot module replacement is handled automatically by Next.js

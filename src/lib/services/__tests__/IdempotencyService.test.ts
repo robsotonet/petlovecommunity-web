@@ -184,7 +184,7 @@ describe('IdempotencyService', () => {
       )
       
       const record = service.getRecord('expires-key')
-      expect(record?.expiresAt).toBe(now + 5 * 60 * 1000)
+      expect(record?.expiresAtMs).toBe(now + 5 * 60 * 1000)
     })
 
     it('should re-execute operation after expiration', async () => {
@@ -232,8 +232,8 @@ describe('IdempotencyService', () => {
         key: 'expired-key',
         correlationId: 'corr-123',
         result: { data: 'expired' },
-        createdAt: now - 2 * 60 * 60 * 1000, // 2 hours ago
-        expiresAt: now - 60 * 60 * 1000, // 1 hour ago (expired)
+        createdAtMs: now - 2 * 60 * 60 * 1000, // 2 hours ago
+        expiresAtMs: now - 60 * 60 * 1000, // 1 hour ago (expired)
       }
       
       // Access private records for testing
@@ -251,8 +251,8 @@ describe('IdempotencyService', () => {
         key: 'expired-key',
         correlationId: 'corr-123',
         result: { data: 'expired' },
-        createdAt: now - 2 * 60 * 60 * 1000,
-        expiresAt: now - 60 * 60 * 1000,
+        createdAtMs: now - 2 * 60 * 60 * 1000,
+        expiresAtMs: now - 60 * 60 * 1000,
       }
       
       ;(service as any).records.set('expired-key', expiredRecord)
@@ -366,8 +366,8 @@ describe('IdempotencyService', () => {
         key: 'record-key',
         correlationId,
         result: { data: 'record-data' },
-        createdAt: 1234567890000,
-        expiresAt: 1234567890000 + 30 * 60 * 1000,
+        createdAtMs: 1234567890000,
+        expiresAtMs: 1234567890000 + 30 * 60 * 1000,
       })
     })
 
@@ -406,8 +406,8 @@ describe('IdempotencyService', () => {
         key: 'active-key',
         correlationId: 'corr-active',
         result: { data: 'active' },
-        createdAt: now,
-        expiresAt: now + 60 * 60 * 1000, // 1 hour from now
+        createdAtMs: now,
+        expiresAtMs: now + 60 * 60 * 1000, // 1 hour from now
       }
       
       // Add expired record
@@ -415,8 +415,8 @@ describe('IdempotencyService', () => {
         key: 'expired-key',
         correlationId: 'corr-expired',
         result: { data: 'expired' },
-        createdAt: now - 2 * 60 * 60 * 1000,
-        expiresAt: now - 60 * 60 * 1000, // 1 hour ago
+        createdAtMs: now - 2 * 60 * 60 * 1000,
+        expiresAtMs: now - 60 * 60 * 1000, // 1 hour ago
       }
       
       // Manually add records for testing
@@ -447,8 +447,8 @@ describe('IdempotencyService', () => {
         key: 'active1',
         correlationId: 'corr1',
         result: { data: 'active1' },
-        createdAt: now,
-        expiresAt: now + 60 * 60 * 1000,
+        createdAtMs: now,
+        expiresAtMs: now + 60 * 60 * 1000,
       })
       
       const originalSize = records.size
@@ -470,16 +470,16 @@ describe('IdempotencyService', () => {
         key: 'active1',
         correlationId: 'corr1',
         result: { data: 'active1' },
-        createdAt: now,
-        expiresAt: now + 60 * 60 * 1000, // Active
+        createdAtMs: now,
+        expiresAtMs: now + 60 * 60 * 1000, // Active
       })
       
       records.set('active2', {
         key: 'active2',
         correlationId: 'corr2',
         result: { data: 'active2' },
-        createdAt: now,
-        expiresAt: now + 30 * 60 * 1000, // Active
+        createdAtMs: now,
+        expiresAtMs: now + 30 * 60 * 1000, // Active
       })
       
       // Add expired record
@@ -487,8 +487,8 @@ describe('IdempotencyService', () => {
         key: 'expired1',
         correlationId: 'corr3',
         result: { data: 'expired1' },
-        createdAt: now - 2 * 60 * 60 * 1000,
-        expiresAt: now - 30 * 60 * 1000, // Expired
+        createdAtMs: now - 2 * 60 * 60 * 1000,
+        expiresAtMs: now - 30 * 60 * 1000, // Expired
       })
       
       const stats = service.getStats()
@@ -641,7 +641,7 @@ describe('IdempotencyService', () => {
       // Check the internal record was created with correct expiration
       const records = (service as any).records as Map<string, IdempotencyRecord>
       const internalRecord = records.get('zero-expiry-key')
-      expect(internalRecord?.expiresAt).toBe(now) // Expires immediately
+      expect(internalRecord?.expiresAtMs).toBe(now) // Expires immediately
       
       // But hasRecord should return false because it's already expired
       expect(service.hasRecord('zero-expiry-key')).toBe(false)
@@ -662,7 +662,7 @@ describe('IdempotencyService', () => {
         expect.stringContaining('[Idempotency] Cached new result for key: log-key'),
         expect.objectContaining({
           correlationId: 'corr-log',
-          expiresAt: expect.any(Number),
+          expiresAtMs: expect.any(Number),
         })
       )
       

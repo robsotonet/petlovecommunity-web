@@ -59,8 +59,8 @@ describe('transactionSlice', () => {
         type: 'pet_favorite',
         status: 'pending',
         retryCount: 0,
-        createdAt: 1234567890000,
-        updatedAt: 1234567890000,
+        createdAtMs: 1234567890000,
+        updatedAtMs: 1234567890000,
       })
     })
 
@@ -218,7 +218,7 @@ describe('transactionSlice', () => {
             id: 'txn_mock_transaction_id',
             status,
             retryCount: 2,
-            updatedAt: 1234567890000
+            updatedAtMs: 1234567890000
           })
         })
       })

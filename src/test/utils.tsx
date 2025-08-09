@@ -43,7 +43,7 @@ export function createMockCorrelationContext(overrides?: Partial<CorrelationCont
   return {
     correlationId: 'plc_test_correlation_id',
     sessionId: 'sess_test_session_id',
-    timestamp: Date.now(),
+    timestampMs: Date.now(),
     ...overrides,
   }
 }
@@ -57,8 +57,8 @@ export function createMockTransaction(overrides?: Partial<Transaction>): Transac
     type: 'pet_favorite',
     status: 'pending',
     retryCount: 0,
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
+    createdAtMs: Date.now(),
+    updatedAtMs: Date.now(),
     ...overrides,
   }
 }

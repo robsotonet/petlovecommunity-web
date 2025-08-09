@@ -29,8 +29,8 @@ export class TransactionManager {
       type,
       status: 'pending',
       retryCount: 0,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
+      createdAtMs: Date.now(),
+      updatedAtMs: Date.now()
     };
 
     this.transactions.set(transactionId, transaction);
@@ -62,7 +62,7 @@ export class TransactionManager {
     const transaction = this.transactions.get(transactionId);
     if (transaction) {
       transaction.status = status;
-      transaction.updatedAt = Date.now();
+      transaction.updatedAtMs = Date.now();
       this.transactions.set(transactionId, transaction);
     }
   }
@@ -92,7 +92,7 @@ export class TransactionManager {
         try {
           transaction.retryCount++;
           transaction.status = 'processing';
-          transaction.updatedAt = Date.now();
+          transaction.updatedAtMs = Date.now();
           
           const result = await operation();
           this.updateTransactionStatus(transaction.id, 'completed');
@@ -154,7 +154,7 @@ export class TransactionManager {
     const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
     
     for (const [transactionId, transaction] of this.transactions) {
-      if (transaction.updatedAt < oneDayAgo && 
+      if (transaction.updatedAtMs < oneDayAgo && 
           ['completed', 'failed', 'cancelled'].includes(transaction.status)) {
         
         // Clear any remaining timeouts for old transactions

@@ -42,7 +42,7 @@ export class CorrelationService {
       sessionId: parentCorrelationId ? 
         this.contexts.get(parentCorrelationId)?.sessionId || this.generateSessionId() :
         this.generateSessionId(),
-      timestamp: Date.now(),
+      timestampMs: Date.now(),
     };
 
     this.contexts.set(context.correlationId, context);
@@ -59,7 +59,7 @@ export class CorrelationService {
       const updated = {
         ...existing,
         ...updates,
-        timestamp: Date.now(),
+        timestampMs: Date.now(),
       };
       this.contexts.set(correlationId, updated);
     }
@@ -74,7 +74,7 @@ export class CorrelationService {
     const headers: Record<string, string> = {
       'X-Correlation-ID': context.correlationId,
       'X-Session-ID': context.sessionId,
-      'X-Timestamp': context.timestamp.toString(),
+      'X-Timestamp': context.timestampMs.toString(),
     };
 
     if (context.parentCorrelationId) {
@@ -93,7 +93,7 @@ export class CorrelationService {
     const oneHourAgo = Date.now() - (60 * 60 * 1000);
     
     for (const [correlationId, context] of this.contexts) {
-      if (context.timestamp < oneHourAgo) {
+      if (context.timestampMs < oneHourAgo) {
         this.contexts.delete(correlationId);
       }
     }

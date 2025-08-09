@@ -20,7 +20,7 @@ export class IdempotencyService {
     // Check if we already have a result for this key
     const existing = this.records.get(idempotencyKey);
     
-    if (existing && existing.expiresAt > Date.now()) {
+    if (existing && existing.expiresAtMs > Date.now()) {
       // Return cached result
       if (process.env.NODE_ENV === 'development') {
         console.log(`[Idempotency] Returning cached result for key: ${idempotencyKey}`, {
@@ -39,8 +39,8 @@ export class IdempotencyService {
         key: idempotencyKey,
         correlationId,
         result,
-        createdAt: Date.now(),
-        expiresAt: Date.now() + expirationMinutes * 60 * 1000,
+        createdAtMs: Date.now(),
+        expiresAtMs: Date.now() + expirationMinutes * 60 * 1000,
       };
       
       this.records.set(idempotencyKey, record);
@@ -48,7 +48,7 @@ export class IdempotencyService {
       if (process.env.NODE_ENV === 'development') {
         console.log(`[Idempotency] Cached new result for key: ${idempotencyKey}`, {
           correlationId,
-          expiresAt: record.expiresAt,
+          expiresAtMs: record.expiresAtMs,
         });
       }
       
@@ -67,12 +67,12 @@ export class IdempotencyService {
 
   hasRecord(idempotencyKey: string): boolean {
     const record = this.records.get(idempotencyKey);
-    return record !== undefined && record.expiresAt > Date.now();
+    return record !== undefined && record.expiresAtMs > Date.now();
   }
 
   getRecord(idempotencyKey: string): IdempotencyRecord | undefined {
     const record = this.records.get(idempotencyKey);
-    return record && record.expiresAt > Date.now() ? record : undefined;
+    return record && record.expiresAtMs > Date.now() ? record : undefined;
   }
 
   invalidateRecord(idempotencyKey: string): void {
@@ -88,7 +88,7 @@ export class IdempotencyService {
     let cleanedCount = 0;
     
     for (const [key, record] of this.records) {
-      if (record.expiresAt <= now) {
+      if (record.expiresAtMs <= now) {
         this.records.delete(key);
         cleanedCount++;
       }
@@ -110,7 +110,7 @@ export class IdempotencyService {
     let expiredCount = 0;
 
     for (const record of this.records.values()) {
-      if (record.expiresAt > now) {
+      if (record.expiresAtMs > now) {
         activeCount++;
       } else {
         expiredCount++;

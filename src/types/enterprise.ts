@@ -4,7 +4,7 @@ export interface CorrelationContext {
   parentCorrelationId?: string;
   userId?: string;
   sessionId: string;
-  timestamp: number;
+  timestampMs: number;
 }
 
 export interface Transaction {
@@ -14,8 +14,8 @@ export interface Transaction {
   type: TransactionType;
   status: TransactionStatus;
   retryCount: number;
-  createdAt: number;
-  updatedAt: number;
+  createdAtMs: number;
+  updatedAtMs: number;
 }
 
 export type TransactionType = 
@@ -36,8 +36,8 @@ export interface IdempotencyRecord {
   key: string;
   correlationId: string;
   result: any;
-  createdAt: number;
-  expiresAt: number;
+  createdAtMs: number;
+  expiresAtMs: number;
 }
 
 // Enterprise API types
@@ -53,7 +53,7 @@ export interface EnterpriseApiResponse<T = any> {
   data: T;
   correlationId: string;
   transactionId?: string;
-  timestamp: number;
+  timestampMs: number;
   success: boolean;
   errors?: string[];
 }

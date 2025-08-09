@@ -10,7 +10,7 @@ interface CorrelationState {
 const initialContext: CorrelationContext = {
   correlationId: generateCorrelationId(),
   sessionId: generateSessionId(),
-  timestamp: Date.now(),
+  timestampMs: Date.now(),
 };
 
 const initialState: CorrelationState = {
@@ -26,7 +26,7 @@ const correlationSlice = createSlice({
       const newContext: CorrelationContext = {
         ...state.currentContext,
         ...action.payload,
-        timestamp: Date.now(),
+        timestampMs: Date.now(),
       };
       state.currentContext = newContext;
       state.history.push(newContext);
@@ -43,7 +43,7 @@ const correlationSlice = createSlice({
         parentCorrelationId: state.currentContext.correlationId,
         sessionId: state.currentContext.sessionId,
         userId: action.payload.userId || state.currentContext.userId,
-        timestamp: Date.now(),
+        timestampMs: Date.now(),
       };
       state.currentContext = childContext;
       state.history.push(childContext);
