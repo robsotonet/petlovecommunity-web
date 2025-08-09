@@ -1,13 +1,17 @@
-// Cryptographically secure ID generation
+// Enterprise-grade cryptographically secure ID generation
 const generateSecureId = (): string => {
-  // Use crypto.randomUUID() for cryptographically secure generation
-  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+  // Require crypto.randomUUID() for enterprise security
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID().replace(/-/g, '');
   }
   
-  // Fallback for environments without crypto.randomUUID (should not happen in modern browsers/Node)
-  console.warn('crypto.randomUUID() not available, falling back to less secure generation');
-  return `${Date.now()}_${Math.random().toString(36).substring(2, 15)}_${Math.random().toString(36).substring(2, 15)}`;
+  // No fallbacks allowed in enterprise environment - this is a critical security requirement
+  throw new Error(
+    'CRITICAL SECURITY ERROR: crypto.randomUUID() is not available. ' +
+    'Enterprise correlation IDs require cryptographically secure generation using Web Crypto API. ' +
+    'This environment does not meet enterprise security requirements. ' +
+    'Please ensure your environment supports crypto.randomUUID() (available in modern browsers and Node.js 19+).'
+  );
 };
 
 export const generateCorrelationId = (): string => {

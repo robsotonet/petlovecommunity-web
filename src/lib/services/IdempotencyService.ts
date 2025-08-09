@@ -127,7 +127,45 @@ export class IdempotencyService {
 
 export const idempotencyService = IdempotencyService.getInstance();
 
-// Cleanup expired idempotency keys every 5 minutes
-setInterval(() => {
-  idempotencyService.cleanup();
-}, 5 * 60 * 1000);
+// Hot-reload safe cleanup manager for IdempotencyService
+let serviceCleanupIntervalId: NodeJS.Timeout | null = null;
+
+const startServiceCleanup = () => {
+  if (serviceCleanupIntervalId === null) {
+    serviceCleanupIntervalId = setInterval(() => {
+      idempotencyService.cleanup();
+    }, 5 * 60 * 1000); // Cleanup every 5 minutes
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[IdempotencyService] Cleanup interval started');
+    }
+  }
+};
+
+const stopServiceCleanup = () => {
+  if (serviceCleanupIntervalId !== null) {
+    clearInterval(serviceCleanupIntervalId);
+    serviceCleanupIntervalId = null;
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[IdempotencyService] Cleanup interval stopped');
+    }
+  }
+};
+
+// Export service lifecycle management
+export const idempotencyServiceLifecycle = {
+  start: startServiceCleanup,
+  stop: stopServiceCleanup,
+  isRunning: () => serviceCleanupIntervalId !== null,
+};
+
+// Start cleanup automatically on first use
+startServiceCleanup();
+
+// Hot module replacement cleanup for development
+if (typeof module !== 'undefined' && module.hot) {
+  module.hot.dispose(() => {
+    stopServiceCleanup();
+  });
+}

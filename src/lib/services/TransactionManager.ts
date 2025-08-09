@@ -87,10 +87,8 @@ export class TransactionManager {
     transaction: Transaction, 
     operation: () => Promise<T>
   ): Promise<T> {
-    const retryDelay = this.calculateRetryDelay(transaction.retryCount);
-    
     return new Promise((resolve, reject) => {
-      const timeoutId = setTimeout(async () => {
+      const executeRetryAttempt = async () => {
         try {
           transaction.retryCount++;
           transaction.status = 'processing';
@@ -98,21 +96,25 @@ export class TransactionManager {
           
           const result = await operation();
           this.updateTransactionStatus(transaction.id, 'completed');
-          
           this.retryQueue.delete(transaction.id);
           resolve(result);
         } catch (error) {
           if (this.shouldRetry(transaction)) {
-            // Schedule another retry
-            resolve(this.scheduleRetry(transaction, operation));
+            // Schedule next retry without recursion
+            const retryDelay = this.calculateRetryDelay(transaction.retryCount);
+            const timeoutId = setTimeout(executeRetryAttempt, retryDelay);
+            this.retryQueue.set(transaction.id, timeoutId);
           } else {
             this.updateTransactionStatus(transaction.id, 'failed');
             this.retryQueue.delete(transaction.id);
             reject(error);
           }
         }
-      }, retryDelay);
+      };
 
+      // Start first retry attempt
+      const initialDelay = this.calculateRetryDelay(transaction.retryCount);
+      const timeoutId = setTimeout(executeRetryAttempt, initialDelay);
       this.retryQueue.set(transaction.id, timeoutId);
     });
   }
@@ -154,9 +156,51 @@ export class TransactionManager {
     for (const [transactionId, transaction] of this.transactions) {
       if (transaction.updatedAt < oneDayAgo && 
           ['completed', 'failed', 'cancelled'].includes(transaction.status)) {
+        
+        // Clear any remaining timeouts for old transactions
+        const timeoutId = this.retryQueue.get(transactionId);
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+          this.retryQueue.delete(transactionId);
+        }
+        
         this.transactions.delete(transactionId);
       }
     }
+  }
+  
+  // Clear all active timeouts and reset the manager
+  clearAllTimeouts(): void {
+    // Clear all active retry timeouts
+    for (const [transactionId, timeoutId] of this.retryQueue) {
+      clearTimeout(timeoutId);
+    }
+    this.retryQueue.clear();
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[TransactionManager] Cleared all active timeouts');
+    }
+  }
+  
+  // Shutdown the transaction manager safely
+  shutdown(): void {
+    this.clearAllTimeouts();
+    
+    // Mark all pending transactions as cancelled
+    for (const [transactionId, transaction] of this.transactions) {
+      if (transaction.status === 'pending' || transaction.status === 'processing') {
+        this.updateTransactionStatus(transactionId, 'cancelled');
+      }
+    }
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[TransactionManager] Shutdown completed');
+    }
+  }
+  
+  // Get active timeout count for monitoring
+  getActiveTimeoutCount(): number {
+    return this.retryQueue.size;
   }
 }
 

@@ -11,12 +11,27 @@ export class CorrelationService {
     return CorrelationService.instance;
   }
 
+  private generateSecureId(): string {
+    // Use enterprise-grade cryptographically secure ID generation
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+      return crypto.randomUUID().replace(/-/g, '');
+    }
+    
+    // No fallbacks allowed in enterprise environment - this is a critical security requirement
+    throw new Error(
+      'CRITICAL SECURITY ERROR: crypto.randomUUID() is not available. ' +
+      'Enterprise correlation IDs require cryptographically secure generation using Web Crypto API. ' +
+      'This environment does not meet enterprise security requirements. ' +
+      'Please ensure your environment supports crypto.randomUUID() (available in modern browsers and Node.js 19+).'
+    );
+  }
+
   generateCorrelationId(): string {
-    return `plc_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    return `plc_${this.generateSecureId()}`;
   }
 
   generateSessionId(): string {
-    return `sess_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
+    return `sess_${this.generateSecureId()}`;
   }
 
   createContext(userId?: string, parentCorrelationId?: string): CorrelationContext {
@@ -66,7 +81,7 @@ export class CorrelationService {
       headers['X-Parent-Correlation-ID'] = context.parentCorrelationId;
     }
 
-    if (context.userId) {
+    if (context.userId !== undefined) {
       headers['X-User-ID'] = context.userId;
     }
 

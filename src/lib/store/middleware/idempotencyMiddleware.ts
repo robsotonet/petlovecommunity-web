@@ -19,6 +19,9 @@ export const idempotencyMiddleware: Middleware =
     if (action.meta?.idempotencyKey) {
       const key = action.meta.idempotencyKey;
       
+      // Start cleanup interval on first idempotent action
+      startCleanupIfNeeded();
+      
       // Check if we've already processed this action
       if (idempotencyCache.has(key)) {
         if (process.env.NODE_ENV === 'development') {
@@ -53,12 +56,66 @@ export const idempotencyMiddleware: Middleware =
     return next(action);
   };
 
-// Cleanup expired idempotency keys periodically
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, record] of idempotencyCache.entries()) {
-    if (record.expiresAt < now) {
-      idempotencyCache.delete(key);
+// Hot-reload safe cleanup manager
+let cleanupIntervalId: NodeJS.Timeout | null = null;
+
+const startCleanupIfNeeded = () => {
+  if (cleanupIntervalId === null) {
+    cleanupIntervalId = setInterval(() => {
+      const now = Date.now();
+      let cleanedCount = 0;
+      
+      for (const [key, record] of idempotencyCache.entries()) {
+        if (record.expiresAt < now) {
+          idempotencyCache.delete(key);
+          cleanedCount++;
+        }
+      }
+      
+      if (process.env.NODE_ENV === 'development' && cleanedCount > 0) {
+        console.log(`[Idempotency] Cleaned up ${cleanedCount} expired keys`);
+      }
+    }, 5 * 60 * 1000); // Cleanup every 5 minutes
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Idempotency] Cleanup interval started');
     }
   }
-}, 5 * 60 * 1000); // Cleanup every 5 minutes
+};
+
+const stopCleanup = () => {
+  if (cleanupIntervalId !== null) {
+    clearInterval(cleanupIntervalId);
+    cleanupIntervalId = null;
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[Idempotency] Cleanup interval stopped');
+    }
+  }
+};
+
+// Export cleanup functions for lifecycle management
+export const idempotencyCleanup = {
+  start: startCleanupIfNeeded,
+  stop: stopCleanup,
+  forceClean: () => {
+    const now = Date.now();
+    let cleanedCount = 0;
+    
+    for (const [key, record] of idempotencyCache.entries()) {
+      if (record.expiresAt < now) {
+        idempotencyCache.delete(key);
+        cleanedCount++;
+      }
+    }
+    
+    return cleanedCount;
+  }
+};
+
+// Hot module replacement cleanup for development
+if (typeof module !== 'undefined' && module.hot) {
+  module.hot.dispose(() => {
+    stopCleanup();
+  });
+}
