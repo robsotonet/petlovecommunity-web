@@ -88,6 +88,78 @@ export class CorrelationService {
     return headers;
   }
 
+  // Enhanced context persistence
+  persistContext(context: CorrelationContext): void {
+    if (typeof window !== 'undefined') {
+      try {
+        const key = `plc_correlation_${context.correlationId}`;
+        window.sessionStorage.setItem(key, JSON.stringify(context));
+      } catch (error) {
+        console.warn('Failed to persist correlation context:', error);
+      }
+    }
+  }
+
+  loadPersistedContext(correlationId: string): CorrelationContext | null {
+    if (typeof window !== 'undefined') {
+      try {
+        const key = `plc_correlation_${correlationId}`;
+        const stored = window.sessionStorage.getItem(key);
+        if (stored) {
+          return JSON.parse(stored);
+        }
+      } catch (error) {
+        console.warn('Failed to load persisted correlation context:', error);
+      }
+    }
+    return null;
+  }
+
+  // Enhanced parent-child correlation tracking
+  createChildContext(parentCorrelationId: string, userId?: string): CorrelationContext {
+    const parent = this.getContext(parentCorrelationId) || this.loadPersistedContext(parentCorrelationId);
+    
+    if (!parent) {
+      throw new Error(`Parent correlation context not found: ${parentCorrelationId}`);
+    }
+
+    const childContext = this.createContext(userId || parent.userId, parentCorrelationId);
+    
+    // Maintain parent-child relationship metadata
+    childContext.depth = (parent.depth || 0) + 1;
+    childContext.rootCorrelationId = parent.rootCorrelationId || parent.correlationId;
+    
+    this.persistContext(childContext);
+    return childContext;
+  }
+
+  // Request interceptor functionality
+  injectCorrelationHeaders(
+    request: RequestInit, 
+    correlationId?: string
+  ): RequestInit {
+    const contextId = correlationId || this.generateCorrelationId();
+    let context = this.getContext(contextId);
+    
+    if (!context) {
+      context = this.createContext();
+      this.persistContext(context);
+    }
+
+    const headers = new Headers(request.headers);
+    const correlationHeaders = this.getRequestHeaders(context.correlationId);
+    
+    Object.entries(correlationHeaders).forEach(([key, value]) => {
+      headers.set(key, value);
+    });
+
+    return {
+      ...request,
+      headers,
+    };
+  }
+
+  // Enhanced cleanup with persistence management
   cleanup(): void {
     // Remove contexts older than 1 hour
     const oneHourAgo = Date.now() - (60 * 60 * 1000);
@@ -95,8 +167,31 @@ export class CorrelationService {
     for (const [correlationId, context] of this.contexts) {
       if (context.timestampMs < oneHourAgo) {
         this.contexts.delete(correlationId);
+        
+        // Also clean up persisted storage
+        if (typeof window !== 'undefined') {
+          try {
+            window.sessionStorage.removeItem(`plc_correlation_${correlationId}`);
+          } catch (error) {
+            console.warn('Failed to clean up persisted context:', error);
+          }
+        }
       }
     }
+  }
+
+  // Enhanced context retrieval with persistence fallback
+  getContextWithFallback(correlationId: string): CorrelationContext | undefined {
+    let context = this.getContext(correlationId);
+    
+    if (!context) {
+      context = this.loadPersistedContext(correlationId);
+      if (context) {
+        this.contexts.set(correlationId, context);
+      }
+    }
+    
+    return context;
   }
 }
 

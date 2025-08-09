@@ -71,7 +71,7 @@ describe('CorrelationService', () => {
       expect(context).toMatchObject({
         correlationId: expect.stringMatching(/^plc_[a-f0-9]{32}$/),
         sessionId: expect.stringMatching(/^sess_[a-f0-9]{32}$/),
-        timestamp: 1234567890000,
+        timestampMs: 1234567890000,
         userId: undefined,
         parentCorrelationId: undefined,
       })
@@ -84,7 +84,7 @@ describe('CorrelationService', () => {
       expect(context).toMatchObject({
         correlationId: expect.any(String),
         sessionId: expect.any(String),
-        timestamp: 1234567890000,
+        timestampMs: 1234567890000,
       })
     })
 
@@ -277,7 +277,7 @@ describe('CorrelationService', () => {
       expect(context).toMatchObject({
         correlationId: expect.any(String),
         sessionId: expect.any(String),
-        timestamp: expect.any(Number),
+        timestampMs: expect.any(Number),
         userId: 'user123',
         parentCorrelationId: 'parent-id',
       })

@@ -5,6 +5,9 @@ export interface CorrelationContext {
   userId?: string;
   sessionId: string;
   timestampMs: number;
+  // Enhanced parent-child tracking
+  depth?: number;
+  rootCorrelationId?: string;
 }
 
 export interface Transaction {

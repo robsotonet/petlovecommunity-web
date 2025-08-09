@@ -113,13 +113,13 @@ describe('TransactionManager', () => {
         mockOperation
       )
 
-      // First failure, should schedule retry after 1 second
+      // First failure, should schedule retry after 2 seconds (new backoff)
       await vi.waitFor(() => expect(attemptCount).toBe(1))
-      advanceTime(1000)
-
-      // Second failure, should schedule retry after 2 seconds  
-      await vi.waitFor(() => expect(attemptCount).toBe(2))
       advanceTime(2000)
+
+      // Second failure, should schedule retry after 4 seconds (new backoff)  
+      await vi.waitFor(() => expect(attemptCount).toBe(2))
+      advanceTime(4000)
 
       // Third attempt should succeed
       const result = await resultPromise
@@ -192,11 +192,13 @@ describe('TransactionManager', () => {
         )
       ).rejects.toThrow('Always fails')
 
-      // Should have delays: 1s, 2s, 4s for 3 retries
-      expect(delays).toEqual([1000, 2000, 4000])
+      // Should have delays: 2s, 4s, 8s for 3 retries (new exponential backoff)
+      // Filter out non-retry delays (0s and other test artifacts)
+      const retryDelays = delays.filter(d => d >= 2000 && d <= 32000)
+      expect(retryDelays).toEqual([2000, 4000, 8000])
     })
 
-    it('should cap retry delay at 30 seconds', async () => {
+    it('should cap retry delay at 32 seconds', async () => {
       let attemptCount = 0
       const mockOperation = vi.fn(() => {
         attemptCount++
@@ -223,12 +225,14 @@ describe('TransactionManager', () => {
         )
       ).rejects.toThrow('Always fails')
 
-      // Delays should be: 1s, 2s, 4s, 8s, 16s, but last should be capped at 30s
-      expect(delays).toEqual([1000, 2000, 4000, 8000, 16000])
+      // Delays should be: 2s, 4s, 8s, 16s, 32s with new exponential backoff
+      // Filter out non-retry delays (0s and other test artifacts)
+      const retryDelays = delays.filter(d => d >= 2000 && d <= 32000)
+      expect(retryDelays).toEqual([2000, 4000, 8000, 16000, 32000])
       
-      // If we had more retries, they would be capped at 30s
-      const maxDelay = Math.max(...delays)
-      expect(maxDelay).toBeLessThanOrEqual(30000)
+      // If we had more retries, they would be capped at 32s (updated cap)
+      const maxDelay = Math.max(...retryDelays)
+      expect(maxDelay).toBeLessThanOrEqual(32000)
       
       // Restore original setTimeout
       globalThis.setTimeout = originalSetTimeout

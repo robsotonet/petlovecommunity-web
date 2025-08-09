@@ -3,6 +3,11 @@ import { IdempotencyRecord } from '../../types/enterprise';
 export class IdempotencyService {
   private static instance: IdempotencyService;
   private records: Map<string, IdempotencyRecord> = new Map();
+  
+  constructor() {
+    // Load persisted records on startup
+    this.loadPersistedRecords();
+  }
 
   static getInstance(): IdempotencyService {
     if (!IdempotencyService.instance) {
@@ -17,8 +22,8 @@ export class IdempotencyService {
     operation: () => Promise<T>,
     expirationMinutes: number = 60
   ): Promise<T> {
-    // Check if we already have a result for this key
-    const existing = this.records.get(idempotencyKey);
+    // Check if we already have a result for this key (including persisted fallback)
+    const existing = this.getRecordWithFallback(idempotencyKey);
     
     if (existing && existing.expiresAtMs > Date.now()) {
       // Return cached result
@@ -44,6 +49,7 @@ export class IdempotencyService {
       };
       
       this.records.set(idempotencyKey, record);
+      this.persistRecord(record);
       
       if (process.env.NODE_ENV === 'development') {
         console.log(`[Idempotency] Cached new result for key: ${idempotencyKey}`, {
@@ -78,6 +84,15 @@ export class IdempotencyService {
   invalidateRecord(idempotencyKey: string): void {
     this.records.delete(idempotencyKey);
     
+    // Also remove from persisted storage
+    if (typeof window !== 'undefined') {
+      try {
+        window.localStorage.removeItem(`plc_idempotency_${idempotencyKey}`);
+      } catch (error) {
+        console.warn('Failed to remove persisted idempotency record:', error);
+      }
+    }
+    
     if (process.env.NODE_ENV === 'development') {
       console.log(`[Idempotency] Invalidated record: ${idempotencyKey}`);
     }
@@ -86,16 +101,56 @@ export class IdempotencyService {
   cleanup(): void {
     const now = Date.now();
     let cleanedCount = 0;
+    let persistedCleanedCount = 0;
     
+    // Clean in-memory records
     for (const [key, record] of this.records) {
       if (record.expiresAtMs <= now) {
         this.records.delete(key);
         cleanedCount++;
+        
+        // Also clean up persisted version
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.removeItem(`plc_idempotency_${key}`);
+            persistedCleanedCount++;
+          } catch (error) {
+            console.warn('Failed to clean up persisted idempotency record:', error);
+          }
+        }
+      }
+    }
+    
+    // Also scan and clean directly from localStorage (in case of orphaned records)
+    if (typeof window !== 'undefined') {
+      try {
+        const keys = Object.keys(window.localStorage).filter(key => 
+          key.startsWith('plc_idempotency_')
+        );
+        
+        for (const key of keys) {
+          try {
+            const stored = window.localStorage.getItem(key);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              if (parsed.expiresAtMs <= now) {
+                window.localStorage.removeItem(key);
+                persistedCleanedCount++;
+              }
+            }
+          } catch (error) {
+            // Remove corrupt records
+            window.localStorage.removeItem(key);
+            persistedCleanedCount++;
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to clean up persisted idempotency records:', error);
       }
     }
     
     if (process.env.NODE_ENV === 'development' && cleanedCount > 0) {
-      console.log(`[Idempotency] Cleaned up ${cleanedCount} expired records`);
+      console.log(`[Idempotency] Cleaned up ${cleanedCount} expired in-memory records and ${persistedCleanedCount} persisted records`);
     }
   }
 
@@ -122,6 +177,137 @@ export class IdempotencyService {
       activeRecords: activeCount,
       expiredRecords: expiredCount,
     };
+  }
+
+  // Enhanced cache persistence with TTL management
+  private persistRecord(record: IdempotencyRecord): void {
+    if (typeof window !== 'undefined') {
+      try {
+        const key = `plc_idempotency_${record.key}`;
+        const persistedData = {
+          ...record,
+          _persistedAt: Date.now(),
+          _version: 1, // For future compatibility
+        };
+        
+        window.localStorage.setItem(key, JSON.stringify(persistedData));
+      } catch (error) {
+        console.warn('Failed to persist idempotency record:', error);
+      }
+    }
+  }
+
+  private loadPersistedRecords(): void {
+    if (typeof window !== 'undefined') {
+      try {
+        const keys = Object.keys(window.localStorage).filter(key => 
+          key.startsWith('plc_idempotency_')
+        );
+        
+        let loadedCount = 0;
+        const now = Date.now();
+        
+        for (const key of keys) {
+          try {
+            const stored = window.localStorage.getItem(key);
+            if (stored) {
+              const parsed = JSON.parse(stored);
+              
+              // Remove persistence metadata
+              delete parsed._persistedAt;
+              delete parsed._version;
+              
+              const record = parsed as IdempotencyRecord;
+              
+              // Only load if not expired
+              if (record.expiresAtMs > now) {
+                this.records.set(record.key, record);
+                loadedCount++;
+              } else {
+                // Remove expired persisted record
+                window.localStorage.removeItem(key);
+              }
+            }
+          } catch (error) {
+            console.warn(`Failed to load persisted idempotency record: ${key}`, error);
+            // Remove corrupt record
+            window.localStorage.removeItem(key);
+          }
+        }
+        
+        if (process.env.NODE_ENV === 'development' && loadedCount > 0) {
+          console.log(`[Idempotency] Loaded ${loadedCount} persisted records`);
+        }
+      } catch (error) {
+        console.warn('Failed to load persisted idempotency records:', error);
+      }
+    }
+  }
+
+  private getRecordWithFallback(idempotencyKey: string): IdempotencyRecord | undefined {
+    // First check in-memory cache
+    let record = this.records.get(idempotencyKey);
+    
+    if (!record && typeof window !== 'undefined') {
+      // Try to load from persistence
+      try {
+        const key = `plc_idempotency_${idempotencyKey}`;
+        const stored = window.localStorage.getItem(key);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          delete parsed._persistedAt;
+          delete parsed._version;
+          
+          record = parsed as IdempotencyRecord;
+          
+          // Add back to in-memory cache if still valid
+          if (record.expiresAtMs > Date.now()) {
+            this.records.set(idempotencyKey, record);
+          } else {
+            // Clean up expired persisted record
+            window.localStorage.removeItem(key);
+            record = undefined;
+          }
+        }
+      } catch (error) {
+        console.warn('Failed to load persisted idempotency record:', error);
+      }
+    }
+    
+    return record;
+  }
+
+  // Enhanced TTL management with configurable expiration policies
+  setCustomTTL(idempotencyKey: string, ttlMinutes: number): boolean {
+    const record = this.getRecordWithFallback(idempotencyKey);
+    if (record) {
+      record.expiresAtMs = Date.now() + ttlMinutes * 60 * 1000;
+      this.records.set(idempotencyKey, record);
+      this.persistRecord(record);
+      
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`[Idempotency] Updated TTL for key: ${idempotencyKey}`, {
+          newExpiresAt: record.expiresAtMs,
+          ttlMinutes,
+        });
+      }
+      
+      return true;
+    }
+    return false;
+  }
+
+  // Cache collision detection
+  detectCollision(idempotencyKey: string, correlationId: string): boolean {
+    const record = this.getRecordWithFallback(idempotencyKey);
+    if (record && record.correlationId !== correlationId) {
+      console.warn(`[Idempotency] Collision detected for key: ${idempotencyKey}`, {
+        existingCorrelationId: record.correlationId,
+        newCorrelationId: correlationId,
+      });
+      return true;
+    }
+    return false;
   }
 }
 

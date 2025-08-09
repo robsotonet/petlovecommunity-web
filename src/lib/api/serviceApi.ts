@@ -1,22 +1,44 @@
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import type { RootState } from '../store';
+import { correlationService } from '../services/CorrelationService';
 
 export const serviceApi = createApi({
   reducerPath: 'serviceApi',
   baseQuery: fetchBaseQuery({
     baseUrl: process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api/services` : '/api/services',
-    prepareHeaders: (headers, { getState }) => {
+    prepareHeaders: (headers, { getState, endpoint, type, forced }) => {
       const state = getState() as RootState;
-      const correlationId = state.correlation.currentContext.correlationId;
-      const sessionId = state.correlation.currentContext.sessionId;
+      const currentContext = state.correlation.currentContext;
       
-      // Add enterprise headers
-      headers.set('X-Correlation-ID', correlationId);
-      headers.set('X-Session-ID', sessionId);
-      headers.set('X-Timestamp', Date.now().toString());
+      // Enhanced correlation tracking for nested requests
+      let contextToUse = currentContext;
       
-      if (state.correlation.currentContext.userId) {
-        headers.set('X-User-ID', state.correlation.currentContext.userId);
+      // For mutation operations, create child context to track the operation
+      if (type === 'mutation' && endpoint) {
+        try {
+          contextToUse = correlationService.createChildContext(
+            currentContext.correlationId, 
+            currentContext.userId
+          );
+        } catch (error) {
+          console.warn('Failed to create child correlation context, using current:', error);
+        }
+      }
+      
+      // Use enhanced correlation service for header generation
+      const correlationHeaders = correlationService.getRequestHeaders(contextToUse.correlationId);
+      
+      // Apply all correlation headers
+      Object.entries(correlationHeaders).forEach(([key, value]) => {
+        headers.set(key, value);
+      });
+      
+      // Add RTK Query specific headers
+      headers.set('X-Query-Endpoint', endpoint || 'unknown');
+      headers.set('X-Query-Type', type || 'unknown');
+      
+      if (forced) {
+        headers.set('X-Forced-Refetch', 'true');
       }
       
       return headers;
