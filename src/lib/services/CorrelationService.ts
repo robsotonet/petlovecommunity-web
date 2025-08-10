@@ -193,6 +193,25 @@ export class CorrelationService {
     
     return context;
   }
+
+  // Get the current active correlation ID (latest created context)
+  getCurrentCorrelationId(): string {
+    if (this.contexts.size === 0) {
+      // Create a default context if none exists
+      const context = this.createContext();
+      return context.correlationId;
+    }
+    
+    // Find the most recently created context
+    let latestContext: CorrelationContext | null = null;
+    for (const context of this.contexts.values()) {
+      if (!latestContext || context.timestampMs > latestContext.timestampMs) {
+        latestContext = context;
+      }
+    }
+    
+    return latestContext!.correlationId;
+  }
 }
 
 // Utility functions

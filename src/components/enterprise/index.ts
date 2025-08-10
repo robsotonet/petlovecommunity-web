@@ -13,4 +13,15 @@ export {
   useSignalRGroups,
 } from './SignalRProvider';
 
+// Enterprise Error Boundaries
+export {
+  CorrelationErrorBoundary,
+  withCorrelationErrorBoundary,
+} from './CorrelationErrorBoundary';
+
+export {
+  TransactionErrorBoundary,
+  withTransactionErrorBoundary,
+} from './TransactionErrorBoundary';
+
 // Enterprise component types are defined inline

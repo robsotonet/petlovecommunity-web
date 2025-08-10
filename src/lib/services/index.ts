@@ -5,6 +5,7 @@ export { idempotencyService } from './IdempotencyService';
 export { transactionManager } from './TransactionManager';
 export { enterpriseLifecycleManager } from './EnterpriseLifecycleManager';
 export { SignalRService, createSignalRService, getSignalRService } from './SignalRService';
+export { LoggingService, loggingService, LogLevel, LogCategory } from './LoggingService';
 
 export type { ServiceStatus } from './EnterpriseLifecycleManager';
 export type { Transaction, TransactionType, TransactionStatus } from '../../types/enterprise';
@@ -29,6 +30,7 @@ export const enterpriseServices = {
   transactions: transactionManager,
   lifecycle: enterpriseLifecycleManager,
   signalR: () => getSignalRService(),
+  logging: loggingService,
 };
 
 // Development helper for manual service management

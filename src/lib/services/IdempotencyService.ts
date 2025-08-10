@@ -320,6 +320,56 @@ export class IdempotencyService {
     }
     return false;
   }
+
+  // Helper methods for RTK Query integration
+  generateIdempotencyKey(args: any, correlationId: string): string {
+    // Create a deterministic key from request args and correlation context
+    const argsString = JSON.stringify(args);
+    const hash = this.hashString(argsString + correlationId);
+    return `rtk_${hash}`;
+  }
+
+  async getExistingResult<T>(idempotencyKey: string): Promise<T | null> {
+    const record = this.getRecordWithFallback(idempotencyKey);
+    if (record && record.expiresAtMs > Date.now()) {
+      return record.result as T;
+    }
+    return null;
+  }
+
+  async storeResult<T>(idempotencyKey: string, result: T, correlationId: string, expirationMinutes: number = 60): Promise<void> {
+    const record: IdempotencyRecord = {
+      key: idempotencyKey,
+      correlationId,
+      result,
+      createdAtMs: Date.now(),
+      expiresAtMs: Date.now() + expirationMinutes * 60 * 1000,
+    };
+    
+    this.records.set(idempotencyKey, record);
+    this.persistRecord(record);
+    
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`[Idempotency] Stored result for key: ${idempotencyKey}`, {
+        correlationId,
+        expiresAtMs: record.expiresAtMs,
+      });
+    }
+  }
+
+  // Simple hash function for generating idempotency keys
+  private hashString(str: string): string {
+    let hash = 0;
+    if (str.length === 0) return hash.toString();
+    
+    for (let i = 0; i < str.length; i++) {
+      const char = str.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    
+    return Math.abs(hash).toString(36);
+  }
 }
 
 export const idempotencyService = IdempotencyService.getInstance();
