@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import { TransactionType, TransactionStatus, Transaction } from '@/types/enterprise';
+import { generateTransactionId } from '@/lib/utils/correlationUtils';
 
 /**
  * Test constants for consistent values across test suites
@@ -68,9 +69,18 @@ export class TestDataFactory {
   /**
    * Mock transaction ID generation for batch operations
    */
+  /**
+   * Mock transaction ID generation for consistent test data
+   * 
+   * Uses proper ES6 import instead of dynamic require() for better
+   * TypeScript compatibility and maintainability.
+   * 
+   * @param count - Number of transaction IDs to mock
+   * @param prefix - Prefix for generated transaction IDs
+   */
   static mockTransactionIdGeneration(count: number, prefix: string = TEST_CONSTANTS.TRANSACTION_ID_PREFIX): void {
     Array.from({ length: count }, (_, index) => {
-      vi.mocked(require('@/lib/utils/transactionUtils').generateTransactionId)
+      vi.mocked(generateTransactionId)
         .mockReturnValueOnce(`${prefix}_${index}`);
     });
   }

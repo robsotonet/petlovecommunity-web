@@ -1,5 +1,6 @@
 import { CorrelationService } from './CorrelationService';
 import { CorrelationContext } from '@/types/enterprise';
+import { parseBooleanEnvVar } from '@/lib/utils/envUtils';
 
 // Logging levels and types
 export enum LogLevel {
@@ -93,7 +94,11 @@ export class LoggingService {
   private enabledLevels: Set<LogLevel> = new Set([LogLevel.INFO, LogLevel.WARN, LogLevel.ERROR, LogLevel.FATAL]);
   private enabledCategories: Set<LogCategory> = new Set(Object.values(LogCategory));
   private enableConsoleOutput: boolean = process.env.NODE_ENV === 'development';
-  private enableMetrics: boolean = process.env.PERFORMANCE_METRICS_ENABLED === 'true';
+  private enableMetrics: boolean = parseBooleanEnvVar(
+    process.env.PERFORMANCE_METRICS_ENABLED, 
+    false, 
+    'LoggingService'
+  );
   
   constructor() {
     this.correlationService = CorrelationService.getInstance();
@@ -107,20 +112,36 @@ export class LoggingService {
     return LoggingService.instance;
   }
 
-  // Configuration from environment variables
+  // Configuration from environment variables with secure parsing
   private configureFromEnvironment(): void {
-    // Configure enabled levels
-    if (process.env.NODE_ENV === 'development' && process.env.ENTERPRISE_DEBUG_ENABLED === 'true') {
+    // Configure enabled levels - add debug level if enterprise debug is enabled in development
+    const enableEnterpriseDebug = parseBooleanEnvVar(
+      process.env.ENTERPRISE_DEBUG_ENABLED,
+      false,
+      'LoggingService/Debug'
+    );
+    
+    if (process.env.NODE_ENV === 'development' && enableEnterpriseDebug) {
       this.enabledLevels.add(LogLevel.DEBUG);
     }
     
-    // Configure console output
+    // Configure console output - enable in development or when request/response logging is enabled
+    const enableRequestResponseLogging = parseBooleanEnvVar(
+      process.env.REQUEST_RESPONSE_LOGGING,
+      false,
+      'LoggingService/RequestResponse'
+    );
+    
     this.enableConsoleOutput = 
       process.env.NODE_ENV === 'development' || 
-      process.env.REQUEST_RESPONSE_LOGGING === 'true';
+      enableRequestResponseLogging;
 
-    // Configure metrics
-    this.enableMetrics = process.env.PERFORMANCE_METRICS_ENABLED === 'true';
+    // Configure metrics - secure parsing with default false
+    this.enableMetrics = parseBooleanEnvVar(
+      process.env.PERFORMANCE_METRICS_ENABLED,
+      false,
+      'LoggingService/Metrics'
+    );
   }
 
   // Core logging method
