@@ -94,15 +94,102 @@ export function createEnterpriseBaseQuery(config: EnterpriseBaseQueryConfig): Ba
     const state = api.getState() as RootState;
     const correlationId = state.correlation.currentContext.correlationId;
 
-    // Determine transaction type based on operation
+    /**
+     * Enterprise Transaction Type Detection System
+     * 
+     * This system uses robust regex pattern matching to classify API endpoints into specific
+     * transaction types for enhanced monitoring, analytics, and retry logic. Each transaction 
+     * type has multiple regex patterns to handle various endpoint formats and naming conventions.
+     * 
+     * Pattern Design Principles:
+     * 1. Use word boundaries with flexibility for underscores/hyphens: (\b|_|-)
+     * 2. Apply negative lookaheads to prevent false positives: (?!.*exclude_pattern)
+     * 3. Support both RESTful URLs and action-based endpoints
+     * 4. Case-insensitive matching with /i flag
+     * 
+     * Benefits over simple string matching:
+     * - Prevents false positives (e.g., "bookmarks" won't match "book" patterns)
+     * - Handles word boundaries correctly (e.g., "pet_adopt" matches pet_adoption)
+     * - Supports multiple endpoint formats and conventions
+     * - More maintainable and extensible pattern system
+     */
+    const TRANSACTION_TYPE_PATTERNS: { [key in Exclude<TransactionType, 'api_mutation' | 'api_query'>]: RegExp[] } = {
+      // Pet Adoption: Handles pet adoption actions and adoption applications
+      pet_adoption: [
+        /(\b|_|-)(adopt|adoption)(\b|_|-)/i,     // Matches: adopt, adoption with word boundaries
+        /pets\/\d+\/adopt/i,                     // RESTful: /pets/123/adopt
+        /adoption[_-]?applications?/i,           // Adoption application forms
+      ],
+      
+      // Pet Favorites: User favoriting/unfavoriting pets  
+      pet_favorite: [
+        /(favorite|favourite)/i,                 // Supports both US/UK spelling
+        /pets\/\d+\/favorite/i,                  // RESTful: /pets/123/favorite
+        /favorites?/i,                           // Favorites list endpoints
+      ],
+      
+      // Adoption Applications: Dedicated adoption application processing
+      adoption_application: [
+        /adoption[_-]?applications?/i,           // Application-specific endpoints
+        /applications?\/adoption/i,              // Reverse path format
+      ],
+      
+      // Service Bookings: Booking services and appointments
+      service_booking: [
+        /(\b|_|-)(booking)(\b|_|-|\/)/i,        // "booking" with word boundaries
+        /(\b|_|-)book(\b|_|-|\/)(?!.*review|.*mark)/i, // "book" excluding bookmarks/reviews
+        /services?\/\d+\/book/i,                // RESTful: /services/123/book  
+        /bookings?/i,                           // Booking list endpoints
+        /appointments?/i,                       // Appointment scheduling
+      ],
+      
+      // Event RSVPs: Event participation and RSVP management
+      event_rsvp: [
+        /(event|rsvp)/i,                        // General event/RSVP patterns
+        /events?\/\d+\/rsvp/i,                  // RESTful: /events/123/rsvp
+        /rsvps?/i,                              // RSVP list endpoints
+      ],
+      
+      // Social Interactions: Posts, comments, likes, shares
+      social_interaction: [
+        /(post|posts)/i,                        // Post creation/management
+        /(comment|comments)/i,                  // Comment actions
+        /(like|likes)/i,                        // Like/unlike actions
+        /(share|shares)/i,                      // Share functionality
+        /social/i,                              // General social features
+        /interactions?/i,                       // User interaction tracking
+      ],
+    };
+
+    /**
+     * Determine transaction type based on operation with robust pattern matching
+     * 
+     * @param endpoint - The API endpoint URL/path to classify
+     * @param type - The operation type ('mutation' or 'query')
+     * @returns TransactionType - Specific transaction type for monitoring and analytics
+     * 
+     * Classification Logic:
+     * 1. Queries always return 'api_query' for read-only operations
+     * 2. Mutations with endpoints are tested against specific patterns first-match wins
+     * 3. Mutations without endpoints or no pattern matches return 'api_mutation'
+     * 
+     * Pattern matching uses first-match-wins strategy, so more specific patterns
+     * should be placed before more general ones within each transaction type.
+     */
     const getTransactionType = (endpoint?: string, type?: string): TransactionType => {
       if (type === 'mutation') {
-        if (endpoint?.includes('adopt') || endpoint?.includes('favorite')) return 'pet_adoption';
-        if (endpoint?.includes('booking') || endpoint?.includes('service')) return 'service_booking';
-        if (endpoint?.includes('event') || endpoint?.includes('rsvp')) return 'event_rsvp';
-        if (endpoint?.includes('post') || endpoint?.includes('comment') || endpoint?.includes('like')) return 'social_interaction';
+        if (endpoint) {
+          // Check patterns for specific transaction types (first match wins)
+          for (const [transactionType, patterns] of Object.entries(TRANSACTION_TYPE_PATTERNS)) {
+            if (patterns.some((regex) => regex.test(endpoint))) {
+              return transactionType as TransactionType;
+            }
+          }
+        }
+        // Fallback for mutations without endpoints or unmatched patterns
         return 'api_mutation';
       }
+      // All query operations are classified as api_query
       return 'api_query';
     };
 

@@ -22,11 +22,14 @@ export interface Transaction {
 }
 
 export type TransactionType = 
+  | 'pet_adoption'
   | 'pet_favorite' 
   | 'adoption_application'
   | 'service_booking'
   | 'event_rsvp'
-  | 'social_interaction';
+  | 'social_interaction'
+  | 'api_mutation'
+  | 'api_query';
 
 export type TransactionStatus = 
   | 'pending'

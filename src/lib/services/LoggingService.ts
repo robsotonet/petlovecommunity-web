@@ -664,9 +664,3 @@ export const loggingServiceLifecycle = {
 // Start cleanup automatically
 startCleanup();
 
-// Hot module replacement cleanup
-if (typeof module !== 'undefined' && module.hot) {
-  module.hot.dispose(() => {
-    stopCleanup();
-  });
-}
