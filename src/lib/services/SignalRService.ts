@@ -120,7 +120,27 @@ export class SignalRService implements ISignalRService {
       
       // Join user-specific group if authenticated
       if (this.correlationContext?.userId) {
-        await this.joinGroup(`user_${this.correlationContext.userId}`);
+        try {
+          await this.joinGroup(`user_${this.correlationContext.userId}`);
+          console.log(`[SignalR] Successfully joined user group: user_${this.correlationContext.userId}`);
+        } catch (groupJoinError) {
+          const signalRError: SignalRError = {
+            type: 'group-join',
+            message: `Connected, but failed to join user group: ${groupJoinError instanceof Error ? groupJoinError.message : 'Unknown error'}`,
+            correlationId: this.correlationContext?.correlationId,
+            timestampMs: Date.now(),
+            originalError: groupJoinError instanceof Error ? groupJoinError : undefined
+          };
+          
+          console.error('[SignalR] Group join failed:', signalRError);
+          
+          // Log the error for monitoring but don't fail the entire connection
+          // User will still receive broadcast messages, just not user-specific ones
+          console.warn('[SignalR] Connection established but user-specific features may be limited');
+          
+          // TODO: Consider emitting an event to notify UI of degraded functionality
+          // this.emit('group-join-failed', signalRError);
+        }
       }
 
     } catch (error) {
@@ -272,17 +292,26 @@ export class SignalRService implements ISignalRService {
 
     // Register handlers for each event type
     this.eventHandlers.forEach((handlers, eventType) => {
-      this.connection!.on(eventType, (event: SignalREvent) => {
+      this.connection!.on(eventType, async (event: SignalREvent) => {
         console.log(`[SignalR] Received ${eventType}:`, event);
         
-        // Invoke all registered handlers
-        handlers.forEach(async (handler) => {
-          try {
-            await handler(event);
-          } catch (error) {
-            console.error(`[SignalR] Error in ${eventType} handler:`, error);
-          }
-        });
+        // Invoke all registered handlers with proper async handling
+        const results = await Promise.allSettled(
+          Array.from(handlers).map(async (handler) => {
+            try {
+              await handler(event);
+            } catch (error) {
+              console.error(`[SignalR] Error in ${eventType} handler:`, error);
+              throw error; // Re-throw to be caught by Promise.allSettled
+            }
+          })
+        );
+        
+        // Log any handler failures for monitoring
+        const failedHandlers = results.filter(result => result.status === 'rejected');
+        if (failedHandlers.length > 0) {
+          console.warn(`[SignalR] ${failedHandlers.length} of ${handlers.size} handlers failed for ${eventType}`);
+        }
       });
     });
   }
