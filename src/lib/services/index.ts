@@ -4,6 +4,10 @@
 export { idempotencyService } from './IdempotencyService';
 export { transactionManager } from './TransactionManager';
 export { enterpriseLifecycleManager } from './EnterpriseLifecycleManager';
+export { signalRService } from './SignalRService';
+
+// Import for use in enterpriseServices object
+import { signalRService } from './SignalRService';
 
 export type { ServiceStatus } from './EnterpriseLifecycleManager';
 export type { Transaction, TransactionType, TransactionStatus } from '../../types/enterprise';
@@ -27,6 +31,7 @@ export const enterpriseServices = {
   idempotency: idempotencyService,
   transactions: transactionManager,
   lifecycle: enterpriseLifecycleManager,
+  signalR: signalRService,
 };
 
 // Development helper for manual service management

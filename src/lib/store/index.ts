@@ -3,6 +3,7 @@ import { setupListeners } from '@reduxjs/toolkit/query';
 import { correlationMiddleware } from './middleware/correlationMiddleware';
 import { transactionMiddleware } from './middleware/transactionMiddleware';
 import { idempotencyMiddleware } from './middleware/idempotencyMiddleware';
+import { loggingMiddleware } from './middleware/loggingMiddleware';
 import { petApi } from '../api/petApi';
 import { serviceApi } from '../api/serviceApi';
 import correlationSlice from './slices/correlationSlice';
@@ -25,6 +26,7 @@ export const store = configureStore({
       .concat(correlationMiddleware)
       .concat(transactionMiddleware)
       .concat(idempotencyMiddleware)
+      .concat(loggingMiddleware)
       .concat(petApi.middleware)
       .concat(serviceApi.middleware),
   devTools: process.env.NODE_ENV !== 'production',
