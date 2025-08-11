@@ -1,4 +1,5 @@
 import { IdempotencyRecord } from '../../types/enterprise';
+import { createHash } from 'crypto';
 
 export class IdempotencyService {
   private static instance: IdempotencyService;
@@ -357,18 +358,9 @@ export class IdempotencyService {
     }
   }
 
-  // Simple hash function for generating idempotency keys
+  // Cryptographically secure hash function for generating idempotency keys
   private hashString(str: string): string {
-    let hash = 0;
-    if (str.length === 0) return hash.toString();
-    
-    for (let i = 0; i < str.length; i++) {
-      const char = str.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
-      hash = hash & hash; // Convert to 32-bit integer
-    }
-    
-    return Math.abs(hash).toString(36);
+    return createHash('sha256').update(str).digest('hex');
   }
 }
 

@@ -501,7 +501,7 @@ export class LoggingService {
         byLevel: errorsByLevel,
       },
       correlations: {
-        active: this.correlationService['contexts'].size,
+        active: this.correlationService.getActiveContextCount(),
         total: new Set(recentLogs.map(log => log.correlationId)).size,
         averageLifetime: 0, // Would need more sophisticated tracking
       },
@@ -553,17 +553,42 @@ export class LoggingService {
 
   private sendToExternalService(logEntry: LogEntry): void {
     // In production, send logs to external service (e.g., Datadog, New Relic, etc.)
-    // This would be implemented based on the chosen logging service
-    if (process.env.EXTERNAL_LOGGING_ENDPOINT) {
-      // Example implementation (would need proper error handling)
-      fetch(process.env.EXTERNAL_LOGGING_ENDPOINT, {
+    const endpoint = process.env.EXTERNAL_LOGGING_ENDPOINT;
+    if (endpoint) {
+      let url: URL;
+      try {
+        url = new URL(endpoint);
+      } catch (err) {
+        console.error('Invalid EXTERNAL_LOGGING_ENDPOINT URL:', endpoint, err);
+        return;
+      }
+
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+      if (process.env.EXTERNAL_LOGGING_AUTH_TOKEN) {
+        headers['Authorization'] = `Bearer ${process.env.EXTERNAL_LOGGING_AUTH_TOKEN}`;
+      }
+
+      const controller = new AbortController();
+      const timeout = Number(process.env.EXTERNAL_LOGGING_TIMEOUT_MS) || 5000;
+      const timeoutId = setTimeout(() => controller.abort(), timeout);
+
+      fetch(url.toString(), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify(logEntry),
-      }).catch(error => {
-        console.error('Failed to send log to external service:', error);
+        signal: controller.signal,
+      })
+      .catch(error => {
+        if (error.name === 'AbortError') {
+          console.error('Timeout sending log to external service:', url.toString());
+        } else {
+          console.error('Failed to send log to external service:', error);
+        }
+      })
+      .finally(() => {
+        clearTimeout(timeoutId);
       });
     }
   }

@@ -118,28 +118,29 @@ export class SignalRService implements ISignalRService {
       
       console.log(`[SignalR] Connected successfully (correlation: ${this.correlationContext?.correlationId})`);
       
-      // Join user-specific group if authenticated
+      // Join user-specific group if authenticated with retry mechanism
       if (this.correlationContext?.userId) {
+        const groupName = `user_${this.correlationContext.userId}`;
         try {
-          await this.joinGroup(`user_${this.correlationContext.userId}`);
-          console.log(`[SignalR] Successfully joined user group: user_${this.correlationContext.userId}`);
+          await this.retryJoinGroup(groupName, 3, 1000);
+          console.log(`[SignalR] Successfully joined user group: ${groupName}`);
         } catch (groupJoinError) {
           const signalRError: SignalRError = {
             type: 'group-join',
-            message: `Connected, but failed to join user group: ${groupJoinError instanceof Error ? groupJoinError.message : 'Unknown error'}`,
+            message: `Connected, but failed to join user group after retries: ${groupJoinError instanceof Error ? groupJoinError.message : 'Unknown error'}`,
             correlationId: this.correlationContext?.correlationId,
             timestampMs: Date.now(),
             originalError: groupJoinError instanceof Error ? groupJoinError : undefined
           };
-          
-          console.error('[SignalR] Group join failed:', signalRError);
-          
+
+          console.error('[SignalR] Group join failed after retries:', signalRError);
+
           // Log the error for monitoring but don't fail the entire connection
           // User will still receive broadcast messages, just not user-specific ones
           console.warn('[SignalR] Connection established but user-specific features may be limited');
-          
-          // TODO: Consider emitting an event to notify UI of degraded functionality
-          // this.emit('group-join-failed', signalRError);
+
+          // Emit an event to notify UI of degraded functionality
+          this.emit('group-join-failed', signalRError);
         }
       }
 
@@ -243,6 +244,32 @@ export class SignalRService implements ISignalRService {
     }
   }
 
+  // Enhanced group joining with retry mechanism
+  private async retryJoinGroup(groupName: string, maxAttempts: number = 3, baseDelayMs: number = 1000): Promise<void> {
+    let lastError: Error | undefined;
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        await this.joinGroup(groupName);
+        return; // Success - exit retry loop
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error('Unknown error');
+        
+        if (attempt === maxAttempts) {
+          // Final attempt failed - throw the error
+          throw lastError;
+        }
+
+        // Calculate exponential backoff delay
+        const delay = baseDelayMs * Math.pow(2, attempt - 1);
+        console.warn(`[SignalR] Group join attempt ${attempt} failed for ${groupName}, retrying in ${delay}ms:`, lastError.message);
+        
+        // Wait before next attempt
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
   public async sendMessage(method: string, ...args: any[]): Promise<void> {
     if (!this.isConnected()) {
       throw new Error('SignalR connection is not established');
@@ -266,6 +293,19 @@ export class SignalRService implements ISignalRService {
 
   public getCorrelationContext(): CorrelationContext | null {
     return this.correlationContext;
+  }
+
+  // Event emission for notifying UI components of SignalR events
+  private emit(eventType: string, data: any): void {
+    // Use custom event system to notify UI components
+    if (typeof window !== 'undefined') {
+      const customEvent = new CustomEvent(`signalr-${eventType}`, {
+        detail: data
+      });
+      window.dispatchEvent(customEvent);
+      
+      console.log(`[SignalR] Emitted ${eventType} event:`, data);
+    }
   }
 
   private setupConnectionEventHandlers(): void {

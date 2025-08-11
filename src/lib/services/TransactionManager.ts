@@ -205,7 +205,7 @@ export class TransactionManager {
     return transaction;
   }
 
-  // Transaction rollback functionality
+  // Transaction rollback functionality with comprehensive state validation
   async rollbackTransaction(transactionId: string, rollbackOperation?: () => Promise<void>): Promise<boolean> {
     const transaction = this.getTransactionWithFallback(transactionId);
     
@@ -214,31 +214,89 @@ export class TransactionManager {
       return false;
     }
 
-    if (transaction.status === 'completed' && rollbackOperation) {
-      try {
-        // Execute custom rollback operation
-        await rollbackOperation();
-        
-        // Mark transaction as rolled back
-        transaction.status = 'cancelled';
-        transaction.updatedAtMs = Date.now();
-        this.transactions.set(transactionId, transaction);
-        
-        // Fire-and-forget persistence (don't block rollback)
-        this.persistTransaction(transaction).catch(error => {
-          console.warn(`[TransactionManager] Failed to persist transaction rollback ${transactionId}:`, error);
-        });
-        
-        console.log(`Transaction ${transactionId} successfully rolled back`);
-        return true;
-      } catch (error) {
-        console.error(`Failed to rollback transaction ${transactionId}:`, error);
+    // Comprehensive state validation before attempting rollback
+    switch (transaction.status) {
+      case 'processing':
+        console.warn(`Cannot rollback transaction ${transactionId}: transaction is currently processing`);
         return false;
-      }
+      
+      case 'cancelled':
+        // Transaction is already cancelled - idempotent behavior
+        console.log(`Transaction ${transactionId} is already cancelled`);
+        return true;
+      
+      case 'completed':
+        if (!rollbackOperation) {
+          console.warn(`No rollback operation provided for completed transaction ${transactionId}`);
+          return false;
+        }
+        
+        try {
+          // Execute custom rollback operation for completed transaction
+          await rollbackOperation();
+          
+          // Mark transaction as rolled back
+          transaction.status = 'cancelled';
+          transaction.updatedAtMs = Date.now();
+          this.transactions.set(transactionId, transaction);
+          
+          // Fire-and-forget persistence (don't block rollback)
+          this.persistTransaction(transaction).catch(error => {
+            console.warn(`[TransactionManager] Failed to persist transaction rollback ${transactionId}:`, error);
+          });
+          
+          console.log(`Transaction ${transactionId} successfully rolled back`);
+          return true;
+        } catch (error) {
+          console.error(`Failed to rollback completed transaction ${transactionId}:`, error);
+          return false;
+        }
+      
+      case 'failed':
+        if (rollbackOperation) {
+          try {
+            // Optional rollback for failed transactions if operation provided
+            await rollbackOperation();
+            
+            // Update status to cancelled
+            transaction.status = 'cancelled';
+            transaction.updatedAtMs = Date.now();
+            this.transactions.set(transactionId, transaction);
+            
+            // Fire-and-forget persistence
+            this.persistTransaction(transaction).catch(error => {
+              console.warn(`[TransactionManager] Failed to persist failed transaction rollback ${transactionId}:`, error);
+            });
+            
+            console.log(`Failed transaction ${transactionId} rolled back`);
+            return true;
+          } catch (error) {
+            console.error(`Failed to rollback failed transaction ${transactionId}:`, error);
+            return false;
+          }
+        } else {
+          // No rollback operation for failed transaction - just mark as cancelled
+          transaction.status = 'cancelled';
+          transaction.updatedAtMs = Date.now();
+          this.transactions.set(transactionId, transaction);
+          
+          // Fire-and-forget persistence
+          this.persistTransaction(transaction).catch(error => {
+            console.warn(`[TransactionManager] Failed to persist failed transaction cancellation ${transactionId}:`, error);
+          });
+          
+          console.log(`Failed transaction ${transactionId} marked as cancelled`);
+          return true;
+        }
+      
+      case 'pending':
+        // For pending transactions, use the existing cancel logic
+        return this.cancelTransaction(transactionId);
+      
+      default:
+        console.warn(`Cannot rollback transaction ${transactionId}: invalid status '${transaction.status}'`);
+        return false;
     }
-    
-    // For non-completed transactions, just cancel them
-    return this.cancelTransaction(transactionId);
   }
 
   private shouldRetry(transaction: Transaction): boolean {

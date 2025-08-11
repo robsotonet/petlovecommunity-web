@@ -212,6 +212,11 @@ export class CorrelationService {
     
     return latestContext!.correlationId;
   }
+
+  // Get the number of active correlation contexts
+  getActiveContextCount(): number {
+    return this.contexts.size;
+  }
 }
 
 // Utility functions
