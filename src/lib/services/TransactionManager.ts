@@ -34,6 +34,11 @@ export class TransactionManager {
     };
 
     this.transactions.set(transactionId, transaction);
+    
+    // Fire-and-forget persistence (don't block transaction execution)
+    this.persistTransaction(transaction).catch(error => {
+      console.warn(`[TransactionManager] Failed to persist transaction ${transactionId}:`, error);
+    });
 
     try {
       // Update status to processing
@@ -64,6 +69,233 @@ export class TransactionManager {
       transaction.status = status;
       transaction.updatedAtMs = Date.now();
       this.transactions.set(transactionId, transaction);
+      
+      // Fire-and-forget persistence (don't block status updates)
+      this.persistTransaction(transaction).catch(error => {
+        console.warn(`[TransactionManager] Failed to persist transaction status update ${transactionId}:`, error);
+      });
+    }
+  }
+
+  // Get persistable transaction data with whitelisted fields only
+  private getPersistableTransactionData(transaction: Transaction): Record<string, any> {
+    // Whitelist of safe fields to persist to localStorage
+    const safeFields: (keyof Transaction)[] = [
+      'id',
+      'correlationId', 
+      'idempotencyKey',
+      'type',
+      'status',
+      'retryCount',
+      'createdAtMs',
+      'updatedAtMs'
+    ];
+    
+    const persistable: Record<string, any> = {};
+    
+    // Only include whitelisted fields
+    safeFields.forEach(field => {
+      if (field in transaction) {
+        persistable[field] = transaction[field];
+      }
+    });
+    
+    return persistable;
+  }
+
+  // Enhanced async state persistence with localStorage fallback and field sanitization
+  private async persistTransaction(transaction: Transaction): Promise<void> {
+    if (typeof window === 'undefined') {
+      return; // No persistence in server environment
+    }
+
+    // Use requestIdleCallback to defer localStorage operations when possible
+    return new Promise((resolve, reject) => {
+      const doPersist = () => {
+        try {
+          const key = `plc_transaction_${transaction.id}`;
+          const persistableData = this.getPersistableTransactionData(transaction);
+          
+          const dataToStore = JSON.stringify({
+            ...persistableData,
+            // Add persistence metadata
+            _persistedAt: Date.now(),
+            _version: 1, // For future schema migrations
+          });
+          
+          window.localStorage.setItem(key, dataToStore);
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[TransactionManager] Persisted transaction ${transaction.id} with sanitized fields:`, 
+              Object.keys(persistableData));
+          }
+          
+          resolve();
+        } catch (error) {
+          console.warn('Failed to persist transaction state:', error);
+          reject(error);
+        }
+      };
+
+      // Use requestIdleCallback for non-blocking persistence when available
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(doPersist, { timeout: 1000 });
+      } else {
+        // Fallback to setTimeout for older browsers
+        setTimeout(doPersist, 0);
+      }
+    });
+  }
+
+  private loadPersistedTransaction(transactionId: string): Transaction | null {
+    if (typeof window !== 'undefined') {
+      try {
+        const key = `plc_transaction_${transactionId}`;
+        const stored = window.localStorage.getItem(key);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          
+          // Remove persistence metadata
+          delete parsed._persistedAt;
+          delete parsed._version;
+          
+          // Validate that we have the minimum required fields for a Transaction
+          const requiredFields: (keyof Transaction)[] = ['id', 'correlationId', 'type', 'status'];
+          const isValid = requiredFields.every(field => field in parsed);
+          
+          if (!isValid) {
+            console.warn(`[TransactionManager] Invalid persisted transaction ${transactionId}, missing required fields`);
+            // Clean up invalid entry
+            window.localStorage.removeItem(key);
+            return null;
+          }
+          
+          if (process.env.NODE_ENV === 'development') {
+            console.log(`[TransactionManager] Loaded persisted transaction ${transactionId}`);
+          }
+          
+          return parsed as Transaction;
+        }
+      } catch (error) {
+        console.warn('Failed to load persisted transaction:', error);
+        
+        // Clean up corrupt entry
+        try {
+          const key = `plc_transaction_${transactionId}`;
+          window.localStorage.removeItem(key);
+        } catch (cleanupError) {
+          console.warn('Failed to clean up corrupt transaction entry:', cleanupError);
+        }
+      }
+    }
+    return null;
+  }
+
+  // Enhanced transaction retrieval with persistence fallback
+  getTransactionWithFallback(transactionId: string): Transaction | undefined {
+    let transaction = this.getTransaction(transactionId);
+    
+    if (!transaction) {
+      transaction = this.loadPersistedTransaction(transactionId);
+      if (transaction) {
+        this.transactions.set(transactionId, transaction);
+      }
+    }
+    
+    return transaction;
+  }
+
+  // Transaction rollback functionality with comprehensive state validation
+  async rollbackTransaction(transactionId: string, rollbackOperation?: () => Promise<void>): Promise<boolean> {
+    const transaction = this.getTransactionWithFallback(transactionId);
+    
+    if (!transaction) {
+      console.warn(`Cannot rollback transaction ${transactionId}: not found`);
+      return false;
+    }
+
+    // Comprehensive state validation before attempting rollback
+    switch (transaction.status) {
+      case 'processing':
+        console.warn(`Cannot rollback transaction ${transactionId}: transaction is currently processing`);
+        return false;
+      
+      case 'cancelled':
+        // Transaction is already cancelled - idempotent behavior
+        console.log(`Transaction ${transactionId} is already cancelled`);
+        return true;
+      
+      case 'completed':
+        if (!rollbackOperation) {
+          console.warn(`No rollback operation provided for completed transaction ${transactionId}`);
+          return false;
+        }
+        
+        try {
+          // Execute custom rollback operation for completed transaction
+          await rollbackOperation();
+          
+          // Mark transaction as rolled back
+          transaction.status = 'cancelled';
+          transaction.updatedAtMs = Date.now();
+          this.transactions.set(transactionId, transaction);
+          
+          // Fire-and-forget persistence (don't block rollback)
+          this.persistTransaction(transaction).catch(error => {
+            console.warn(`[TransactionManager] Failed to persist transaction rollback ${transactionId}:`, error);
+          });
+          
+          console.log(`Transaction ${transactionId} successfully rolled back`);
+          return true;
+        } catch (error) {
+          console.error(`Failed to rollback completed transaction ${transactionId}:`, error);
+          return false;
+        }
+      
+      case 'failed':
+        if (rollbackOperation) {
+          try {
+            // Optional rollback for failed transactions if operation provided
+            await rollbackOperation();
+            
+            // Update status to cancelled
+            transaction.status = 'cancelled';
+            transaction.updatedAtMs = Date.now();
+            this.transactions.set(transactionId, transaction);
+            
+            // Fire-and-forget persistence
+            this.persistTransaction(transaction).catch(error => {
+              console.warn(`[TransactionManager] Failed to persist failed transaction rollback ${transactionId}:`, error);
+            });
+            
+            console.log(`Failed transaction ${transactionId} rolled back`);
+            return true;
+          } catch (error) {
+            console.error(`Failed to rollback failed transaction ${transactionId}:`, error);
+            return false;
+          }
+        } else {
+          // No rollback operation for failed transaction - just mark as cancelled
+          transaction.status = 'cancelled';
+          transaction.updatedAtMs = Date.now();
+          this.transactions.set(transactionId, transaction);
+          
+          // Fire-and-forget persistence
+          this.persistTransaction(transaction).catch(error => {
+            console.warn(`[TransactionManager] Failed to persist failed transaction cancellation ${transactionId}:`, error);
+          });
+          
+          console.log(`Failed transaction ${transactionId} marked as cancelled`);
+          return true;
+        }
+      
+      case 'pending':
+        // For pending transactions, use the existing cancel logic
+        return this.cancelTransaction(transactionId);
+      
+      default:
+        console.warn(`Cannot rollback transaction ${transactionId}: invalid status '${transaction.status}'`);
+        return false;
     }
   }
 
@@ -119,9 +351,37 @@ export class TransactionManager {
     });
   }
 
+  // Retry delay constants for maintainability and configurability
+  private static readonly BASE_RETRY_DELAY_MS = 2000; // Base delay: 2 seconds
+  private static readonly MAX_RETRY_DELAY_MS = 32000; // Max delay: 32 seconds
+
   private calculateRetryDelay(retryCount: number): number {
-    // Exponential backoff: 1s, 2s, 4s, 8s, 16s
-    return Math.min(1000 * Math.pow(2, retryCount), 30000);
+    // Enhanced exponential backoff: 2s, 4s, 8s, 16s, 32s (capped at 32s)
+    const baseDelayMs = TransactionManager.BASE_RETRY_DELAY_MS;
+    return Math.min(baseDelayMs * Math.pow(2, retryCount), TransactionManager.MAX_RETRY_DELAY_MS);
+  }
+
+  // Enhanced timeout handling
+  private async executeWithTimeout<T>(operation: () => Promise<T>, timeoutMs: number): Promise<T> {
+    return Promise.race([
+      operation(),
+      new Promise<T>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Transaction timed out after ${timeoutMs}ms`));
+        }, timeoutMs);
+      })
+    ]);
+  }
+
+  private getDefaultTimeout(type: TransactionType): number {
+    const timeoutConfig = {
+      pet_favorite: 5000,           // 5 seconds
+      adoption_application: 15000,   // 15 seconds
+      service_booking: 10000,        // 10 seconds
+      event_rsvp: 8000,             // 8 seconds
+      social_interaction: 5000,      // 5 seconds
+    };
+    return timeoutConfig[type] || 10000;
   }
 
   getTransaction(transactionId: string): Transaction | undefined {
@@ -162,6 +422,15 @@ export class TransactionManager {
         if (timeoutId) {
           clearTimeout(timeoutId);
           this.retryQueue.delete(transactionId);
+        }
+        
+        // Clean up persisted storage
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage.removeItem(`plc_transaction_${transactionId}`);
+          } catch (error) {
+            console.warn('Failed to clean up persisted transaction:', error);
+          }
         }
         
         this.transactions.delete(transactionId);
