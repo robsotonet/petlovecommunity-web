@@ -9,14 +9,14 @@ import { Input } from '@/components/forms/Input';
 import { Select } from '@/components/forms/Select';
 import { usePetLoveCommunitySession } from '@/components/providers/SessionProvider';
 import { correlationService } from '@/lib/services/CorrelationService';
-import { transactionManager } from '@/lib/services/TransactionManager';
 
 export default function RegisterPage() {
   const router = useRouter();
   const { isAuthenticated, isLoading: sessionLoading } = usePetLoveCommunitySession();
   
   const [formData, setFormData] = useState({
-    name: '',
+    firstName: '',
+    lastName: '',
     email: '',
     password: '',
     confirmPassword: '',
@@ -49,8 +49,12 @@ export default function RegisterPage() {
   };
 
   const validateForm = (): string | null => {
-    if (!formData.name.trim()) {
-      return 'Please enter your full name';
+    if (!formData.firstName.trim()) {
+      return 'Please enter your first name';
+    }
+    
+    if (!formData.lastName.trim()) {
+      return 'Please enter your last name';
     }
     
     if (!formData.email.trim()) {
@@ -92,70 +96,44 @@ export default function RegisterPage() {
 
     try {
       // Create correlation context for registration attempt
-      const correlationId = correlationService.generateCorrelationId();
-      correlationService.setContext({
-        correlationId,
-        sessionId: correlationService.generateSessionId(),
-        timestamp: Date.now(),
-        userId: undefined,
-        requestId: correlationService.generateRequestId(),
-      });
-
-      // Create transaction for registration attempt
-      const transactionId = transactionManager.generateTransactionId();
-      await transactionManager.startTransaction({
-        id: transactionId,
-        correlationId,
-        type: 'user_registration',
-        status: 'pending',
-        data: { 
-          email: formData.email,
-          name: formData.name,
-          role: formData.role,
-          timestamp: Date.now() 
-        },
-        retryCount: 0,
-      });
+      const correlationContext = correlationService.createContext(undefined, undefined);
 
       console.log('[Register] Attempting registration', {
-        correlationId,
-        transactionId,
+        correlationId: correlationContext.correlationId,
         email: formData.email,
-        name: formData.name,
+        firstName: formData.firstName,
+        lastName: formData.lastName,
         role: formData.role,
         timestamp: new Date().toISOString(),
       });
 
-      // In a real application, you would call your registration API here
-      // For demo purposes, we'll simulate registration success and then sign in
-      
-      // Simulate API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // For demonstration, we'll check if email already exists in our demo users
-      const existingEmails = [
-        'demo@petlovecommunity.com',
-        'volunteer@petlovecommunity.com', 
-        'admin@petlovecommunity.com'
-      ];
-      
-      if (existingEmails.includes(formData.email.toLowerCase())) {
-        throw new Error('An account with this email already exists');
-      }
-
-      console.log('[Register] Registration successful (simulated)', {
-        correlationId,
-        transactionId,
-        email: formData.email,
-        role: formData.role,
+      // Call the registration API endpoint
+      const response = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Correlation-ID': correlationContext.correlationId,
+        },
+        body: JSON.stringify({
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          password: formData.password,
+          role: formData.role,
+        }),
       });
 
-      await transactionManager.completeTransaction(transactionId, 'completed', {
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Registration failed');
+      }
+
+      console.log('[Register] Registration successful', {
+        correlationId: correlationContext.correlationId,
         email: formData.email,
-        name: formData.name,
         role: formData.role,
-        action: 'registration',
-        success: true,
+        userId: result.user.id,
       });
 
       // Show success message
@@ -163,7 +141,8 @@ export default function RegisterPage() {
       
       // Clear form
       setFormData({
-        name: '',
+        firstName: '',
+        lastName: '',
         email: '',
         password: '',
         confirmPassword: '',
@@ -182,19 +161,7 @@ export default function RegisterPage() {
       const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred during registration';
       setError(errorMessage);
       
-      // Try to complete transaction with error
-      const correlationContext = correlationService.getCurrentContext();
-      if (correlationContext) {
-        try {
-          await transactionManager.completeTransaction(
-            correlationContext.correlationId,
-            'failed',
-            { error: errorMessage }
-          );
-        } catch (transactionError) {
-          console.error('[Register] Failed to complete failed transaction:', transactionError);
-        }
-      }
+      // Error already logged above
     } finally {
       setIsLoading(false);
     }
@@ -252,16 +219,28 @@ export default function RegisterPage() {
               </div>
             )}
 
-            <Input
-              type="text"
-              label="Full Name"
-              placeholder="Enter your full name"
-              value={formData.name}
-              onChange={(value) => handleInputChange('name', value)}
-              required
-              disabled={isLoading}
-              autoComplete="name"
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                type="text"
+                label="First Name"
+                placeholder="Enter your first name"
+                value={formData.firstName}
+                onChange={(value) => handleInputChange('firstName', value)}
+                required
+                disabled={isLoading}
+                autoComplete="given-name"
+              />
+              <Input
+                type="text"
+                label="Last Name"
+                placeholder="Enter your last name"
+                value={formData.lastName}
+                onChange={(value) => handleInputChange('lastName', value)}
+                required
+                disabled={isLoading}
+                autoComplete="family-name"
+              />
+            </div>
 
             <Input
               type="email"
@@ -272,7 +251,7 @@ export default function RegisterPage() {
               required
               disabled={isLoading}
               autoComplete="email"
-              helpText="We'll use this to send you important updates about pets and events"
+              hint="We'll use this to send you important updates about pets and events"
             />
 
             <Select
@@ -282,7 +261,7 @@ export default function RegisterPage() {
               onChange={(value) => handleInputChange('role', value)}
               required
               disabled={isLoading}
-              helpText="You can change this later in your profile settings"
+              hint="You can change this later in your profile settings"
             />
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -296,7 +275,7 @@ export default function RegisterPage() {
                   required
                   disabled={isLoading}
                   autoComplete="new-password"
-                  helpText="At least 6 characters"
+                  hint="At least 6 characters"
                 />
                 
                 <button

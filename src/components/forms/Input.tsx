@@ -6,7 +6,7 @@ import { useCorrelationContext } from '../enterprise/CorrelationProvider';
 export type InputVariant = 'default' | 'search' | 'email' | 'password' | 'number';
 export type InputSize = 'sm' | 'md' | 'lg';
 
-interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'> {
+interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size' | 'onChange'> {
   label?: string;
   error?: string;
   hint?: string;
@@ -20,6 +20,7 @@ interface InputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'size'>
   loading?: boolean;
   className?: string;
   containerClassName?: string;
+  onChange?: (value: string) => void;
 }
 
 const sizeStyles: Record<InputSize, string> = {
@@ -46,10 +47,18 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     className = '',
     containerClassName = '',
     id,
+    onChange,
     ...props
   }, ref) => {
     const correlation = useCorrelationContext();
     const inputId = id || `input-${correlation.currentContext.correlationId}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Create custom onChange handler that passes value instead of event
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (onChange) {
+        onChange(e.target.value);
+      }
+    };
 
     const inputClasses = [
       baseInputStyles,
@@ -95,6 +104,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             ref={ref}
             id={inputId}
             className={inputClasses}
+            onChange={handleChange}
             data-correlation-id={correlation.currentContext.correlationId}
             data-input-variant={variant}
             data-input-size={size}

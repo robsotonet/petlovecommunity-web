@@ -11,7 +11,7 @@ interface SelectOption {
   disabled?: boolean;
 }
 
-interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size'> {
+interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'size' | 'onChange'> {
   label?: string;
   error?: string;
   hint?: string;
@@ -24,6 +24,7 @@ interface SelectProps extends Omit<SelectHTMLAttributes<HTMLSelectElement>, 'siz
   placeholder?: string;
   className?: string;
   containerClassName?: string;
+  onChange?: (value: string) => void;
 }
 
 const sizeStyles: Record<SelectSize, string> = {
@@ -49,10 +50,18 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
     className = '',
     containerClassName = '',
     id,
+    onChange,
     ...props
   }, ref) => {
     const correlation = useCorrelationContext();
     const selectId = id || `select-${correlation.currentContext.correlationId}-${Math.random().toString(36).substr(2, 9)}`;
+
+    // Create custom onChange handler that passes value instead of event
+    const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+      if (onChange) {
+        onChange(e.target.value);
+      }
+    };
 
     const selectClasses = [
       baseSelectStyles,
@@ -89,6 +98,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(
             ref={ref}
             id={selectId}
             className={selectClasses}
+            onChange={handleChange}
             data-correlation-id={correlation.currentContext.correlationId}
             data-select-size={size}
             data-has-error={!!error}

@@ -26,13 +26,23 @@ function SessionIntegrator({ children }: { children: ReactNode }) {
   useEffect(() => {
     // Update correlation context when session changes
     if (session?.user) {
-      correlationService.setContext({
-        correlationId: session.user.correlationId,
-        sessionId: correlationService.generateSessionId(),
-        timestamp: Date.now(),
-        userId: session.user.id,
-        requestId: correlationService.generateRequestId(),
-      });
+      // Set current correlation ID if user has one, or create new context
+      if (session.user.correlationId) {
+        correlationService.setCurrentCorrelationId(session.user.correlationId);
+        
+        // Update existing context with user ID
+        correlationService.updateContext(session.user.correlationId, {
+          userId: session.user.id,
+          timestampMs: Date.now(),
+        });
+      } else {
+        // Create new correlation context for user session
+        const newContext = correlationService.createContext(session.user.id, undefined);
+        console.log('[SessionProvider] Created new correlation context for user session', {
+          correlationId: newContext.correlationId,
+          userId: session.user.id,
+        });
+      }
 
       console.log('[SessionProvider] Session integrated with correlation context', {
         userId: session.user.id,
@@ -44,9 +54,9 @@ function SessionIntegrator({ children }: { children: ReactNode }) {
       // Clear user context when not authenticated, but keep correlation context
       const currentContext = correlationService.getCurrentContext();
       if (currentContext) {
-        correlationService.updateContext({
+        correlationService.updateContext(currentContext.correlationId, {
           userId: undefined,
-          timestamp: Date.now(),
+          timestampMs: Date.now(),
         });
       }
 

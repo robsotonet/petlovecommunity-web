@@ -4,7 +4,7 @@ import type { RootState } from '../store';
 export const serviceApi = createApi({
   reducerPath: 'serviceApi',
   baseQuery: fetchBaseQuery({
-    baseUrl: process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api/services` : '/api/services',
+    baseUrl: process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api/services` : 'http://localhost:5248/api/services',
     prepareHeaders: (headers, { getState }) => {
       const state = getState() as RootState;
       const correlationId = state.correlation.currentContext.correlationId;

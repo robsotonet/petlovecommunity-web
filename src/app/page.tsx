@@ -1,8 +1,12 @@
+'use client';
+
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Card, CardHeader, CardTitle, CardContent, CardActions } from '@/components/ui/Card';
+import { usePetLoveCommunitySession } from '@/components/providers/SessionProvider';
 
 export default function Home() {
+  const { isAuthenticated, session, isLoading } = usePetLoveCommunitySession();
   return (
     <div className="space-y-16">
       {/* Hero Section */}
@@ -12,12 +16,24 @@ export default function Home() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div className="text-center lg:text-left">
               <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
-                Where Pets Find Their 
-                <span className="block text-beige">Forever Families</span>
+                {isAuthenticated && session?.user ? (
+                  <>
+                    Welcome back, {session.user.name?.split(' ')[0]}!
+                    <span className="block text-beige">Let's Find More Pets</span>
+                  </>
+                ) : (
+                  <>
+                    Where Pets Find Their 
+                    <span className="block text-beige">Forever Families</span>
+                  </>
+                )}
               </h1>
               <p className="text-xl text-white/90 mb-8 leading-relaxed">
-                Join thousands of loving families who have found their perfect companions through 
-                our trusted pet adoption platform. Every pet deserves a loving home.
+                {isAuthenticated ? (
+                  "Continue your journey in our pet loving community. Discover more adorable companions waiting for their forever homes."
+                ) : (
+                  "Join thousands of loving families who have found their perfect companions through our trusted pet adoption platform. Every pet deserves a loving home."
+                )}
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
                 <Link href="/pets">
@@ -28,9 +44,12 @@ export default function Home() {
                     Find Your Pet
                   </Button>
                 </Link>
-                <Link href="/auth/register">
+                <Link href="/events">
                   <Button variant="secondary" size="lg" className="border-2 border-white text-white hover:bg-white hover:text-coral">
-                    Join Community
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                    Explore Events
                   </Button>
                 </Link>
               </div>
@@ -258,14 +277,20 @@ export default function Home() {
               <p className="text-text-secondary mb-6">Join thousands of pet lovers making a difference in their communities.</p>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Link href="/auth/register">
+                <Link href="/pets">
                   <Button variant="adoption" className="w-full">
-                    Join Community
+                    <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"/>
+                    </svg>
+                    Browse Pets
                   </Button>
                 </Link>
-                <Link href="/events">
+                <Link href="/volunteer">
                   <Button variant="secondary" className="w-full">
-                    View Events
+                    <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                    Volunteer
                   </Button>
                 </Link>
               </div>

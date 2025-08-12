@@ -9,7 +9,6 @@ import { Card, CardHeader, CardTitle, CardContent, CardActions } from '@/compone
 import { Input } from '@/components/forms/Input';
 import { usePetLoveCommunitySession } from '@/components/providers/SessionProvider';
 import { correlationService } from '@/lib/services/CorrelationService';
-import { transactionManager } from '@/lib/services/TransactionManager';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -70,33 +69,10 @@ export default function LoginPage() {
 
     try {
       // Create correlation context for login attempt
-      const correlationId = correlationService.generateCorrelationId();
-      correlationService.setContext({
-        correlationId,
-        sessionId: correlationService.generateSessionId(),
-        timestamp: Date.now(),
-        userId: undefined,
-        requestId: correlationService.generateRequestId(),
-      });
-
-      // Create transaction for login attempt
-      const transactionId = transactionManager.generateTransactionId();
-      await transactionManager.startTransaction({
-        id: transactionId,
-        correlationId,
-        type: 'authentication',
-        status: 'pending',
-        data: { 
-          email: formData.email,
-          action: 'login',
-          timestamp: Date.now() 
-        },
-        retryCount: 0,
-      });
+      const correlationContext = correlationService.createContext(undefined, undefined);
 
       console.log('[Login] Attempting login', {
-        correlationId,
-        transactionId,
+        correlationId: correlationContext.correlationId,
         email: formData.email,
         timestamp: new Date().toISOString(),
       });
@@ -109,15 +85,8 @@ export default function LoginPage() {
 
       if (result?.ok) {
         console.log('[Login] Login successful', {
-          correlationId,
-          transactionId,
+          correlationId: correlationContext.correlationId,
           email: formData.email,
-        });
-
-        await transactionManager.completeTransaction(transactionId, 'completed', {
-          email: formData.email,
-          action: 'login',
-          success: true,
         });
 
         // Get updated session to ensure user data is loaded
@@ -127,16 +96,9 @@ export default function LoginPage() {
         router.replace(callbackUrl);
       } else {
         console.error('[Login] Login failed', {
-          correlationId,
-          transactionId,
+          correlationId: correlationContext.correlationId,
           error: result?.error,
           email: formData.email,
-        });
-
-        await transactionManager.completeTransaction(transactionId, 'failed', {
-          error: result?.error || 'Login failed',
-          email: formData.email,
-          action: 'login',
         });
 
         setError('Invalid email or password. Please check your credentials and try again.');
@@ -145,19 +107,7 @@ export default function LoginPage() {
       console.error('[Login] Login error:', error);
       setError('An unexpected error occurred. Please try again.');
       
-      // Try to complete transaction with error
-      const correlationContext = correlationService.getCurrentContext();
-      if (correlationContext) {
-        try {
-          await transactionManager.completeTransaction(
-            correlationContext.correlationId,
-            'failed',
-            { error: error instanceof Error ? error.message : 'Login error' }
-          );
-        } catch (transactionError) {
-          console.error('[Login] Failed to complete failed transaction:', transactionError);
-        }
-      }
+      // Error already logged above
     } finally {
       setIsLoading(false);
     }

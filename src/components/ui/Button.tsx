@@ -64,6 +64,13 @@ export function Button(props: ButtonProps) {
     fullWidth = false,
     className = '',
     disabled,
+    // Extract any other custom props that shouldn't go to DOM
+    idempotent,
+    operationName,
+    operationParams,
+    expirationMinutes,
+    preventDoubleClick,
+    doubleClickDelay,
     ..._restProps
   } = props;
 
@@ -84,7 +91,7 @@ export function Button(props: ButtonProps) {
     'data-correlation-id': correlation.currentContext.correlationId,
     'data-button-variant': variant,
     'data-button-size': size,
-    'data-loading': loading,
+    'data-loading': loading.toString(),
   };
 
   // Loading spinner component
@@ -126,17 +133,11 @@ export function Button(props: ButtonProps) {
   );
 
   // Handle idempotent buttons
-  if ('idempotent' in props && props.idempotent) {
+  if (idempotent) {
     const {
       onClick,
-      operationName,
-      operationParams = {},
-      expirationMinutes = 60,
-      preventDoubleClick = true,
-      doubleClickDelay = 1000,
-      idempotent: _idempotent,
       ...buttonProps
-    } = props;
+    } = _restProps;
 
     return (
       <IdempotentButton
@@ -166,7 +167,7 @@ export function Button(props: ButtonProps) {
 
   return (
     <button
-      {...buttonProps}
+      {..._restProps}
       onClick={handleClick}
       className={buttonClasses}
       disabled={disabled || loading}

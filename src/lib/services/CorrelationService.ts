@@ -3,6 +3,7 @@ import { CorrelationContext } from '../../types/enterprise';
 export class CorrelationService {
   private static instance: CorrelationService;
   private contexts: Map<string, CorrelationContext> = new Map();
+  private currentCorrelationId: string | null = null;
 
   static getInstance(): CorrelationService {
     if (!CorrelationService.instance) {
@@ -46,11 +47,25 @@ export class CorrelationService {
     };
 
     this.contexts.set(context.correlationId, context);
+    this.currentCorrelationId = context.correlationId;
     return context;
   }
 
   getContext(correlationId: string): CorrelationContext | undefined {
     return this.contexts.get(correlationId);
+  }
+
+  getCurrentContext(): CorrelationContext | undefined {
+    if (!this.currentCorrelationId) {
+      return undefined;
+    }
+    return this.contexts.get(this.currentCorrelationId);
+  }
+
+  setCurrentCorrelationId(correlationId: string): void {
+    if (this.contexts.has(correlationId)) {
+      this.currentCorrelationId = correlationId;
+    }
   }
 
   updateContext(correlationId: string, updates: Partial<CorrelationContext>): void {
@@ -62,6 +77,11 @@ export class CorrelationService {
         timestampMs: Date.now(),
       };
       this.contexts.set(correlationId, updated);
+      
+      // Update current correlation ID if it matches
+      if (this.currentCorrelationId === correlationId) {
+        this.currentCorrelationId = correlationId;
+      }
     }
   }
 

@@ -4,7 +4,7 @@ import type { RootState } from '../store';
 export const petApi = createApi({
   reducerPath: 'petApi',
   baseQuery: fetchBaseQuery({
-    baseUrl: process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api/pets` : '/api/pets',
+    baseUrl: process.env.NEXT_PUBLIC_API_URL ? `${process.env.NEXT_PUBLIC_API_URL}/api/pets` : 'http://localhost:5248/api/pets',
     prepareHeaders: (headers, { getState }) => {
       const state = getState() as RootState;
       const correlationId = state.correlation.currentContext.correlationId;

@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { signOut } from 'next-auth/react';
 import { Button } from '../ui/Button';
 import { ErrorBoundary } from '../enterprise/ErrorBoundary';
 import { CorrelationProvider } from '../enterprise/CorrelationProvider';
 import { TransactionWrapper } from '../enterprise/TransactionWrapper';
+import { usePetLoveCommunitySession } from '../providers/SessionProvider';
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -35,9 +37,43 @@ export function MainLayout({ children, className = '' }: MainLayoutProps) {
 // Header Component with Pet Love Community Branding
 function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const { isAuthenticated, isLoading, user } = usePetLoveCommunitySession();
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   const toggleMobileMenu = () => {
     setIsMobileMenuOpen(!isMobileMenuOpen);
+  };
+
+  const toggleUserMenu = () => {
+    setIsUserMenuOpen(!isUserMenuOpen);
+  };
+
+  const handleLogout = async () => {
+    await signOut({ callbackUrl: '/' });
+  };
+
+  // Close user menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setIsUserMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Helper function to check if user has required role
+  const hasRole = (requiredRole: string) => {
+    if (!user?.role) return false;
+    const roleHierarchy = { user: 0, volunteer: 1, admin: 2 };
+    const userLevel = roleHierarchy[user.role as keyof typeof roleHierarchy] ?? -1;
+    const requiredLevel = roleHierarchy[requiredRole as keyof typeof roleHierarchy] ?? 999;
+    return userLevel >= requiredLevel;
   };
 
   return (
@@ -112,16 +148,134 @@ function Header() {
 
           {/* Desktop Actions */}
           <div className="hidden md:flex items-center space-x-4">
-            <Link href="/auth/login">
-              <Button variant="secondary" size="sm">
-                Sign In
-              </Button>
-            </Link>
-            <Link href="/auth/register">
-              <Button variant="adoption" size="sm">
-                Join Community
-              </Button>
-            </Link>
+            {isLoading ? (
+              <div className="animate-pulse flex space-x-2">
+                <div className="h-8 w-16 bg-gray-200 rounded"></div>
+                <div className="h-8 w-20 bg-gray-200 rounded"></div>
+              </div>
+            ) : isAuthenticated ? (
+              <>
+                <span className="text-sm text-text-secondary">
+                  Welcome, {user?.name?.split(' ')[0] || 'User'}!
+                </span>
+                
+                {/* User Dropdown Menu */}
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    onClick={toggleUserMenu}
+                    className="flex items-center space-x-2 p-2 rounded-lg hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-coral/20"
+                  >
+                    <div className="w-8 h-8 bg-coral rounded-full flex items-center justify-center">
+                      <span className="text-sm font-medium text-white">
+                        {user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                      </span>
+                    </div>
+                    <svg 
+                      className={`w-4 h-4 text-text-secondary transition-transform ${isUserMenuOpen ? 'rotate-180' : ''}`} 
+                      fill="none" 
+                      stroke="currentColor" 
+                      viewBox="0 0 24 24"
+                    >
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {isUserMenuOpen && (
+                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 py-2 z-50">
+                      {/* User Info Header */}
+                      <div className="px-4 py-3 border-b border-gray-100">
+                        <p className="text-sm font-medium text-midnight">{user?.name}</p>
+                        <p className="text-xs text-text-secondary">{user?.email}</p>
+                        <p className="text-xs text-coral capitalize">{user?.role}</p>
+                      </div>
+
+                      {/* Navigation Links */}
+                      <div className="py-2">
+                        <Link
+                          href="/dashboard"
+                          className="flex items-center px-4 py-2 text-sm text-text-primary hover:bg-gray-50 transition-colors"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          <svg className="w-4 h-4 mr-3 text-coral" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5a2 2 0 012-2h4a2 2 0 012 2v6H8V5z" />
+                          </svg>
+                          Dashboard
+                        </Link>
+
+                        {hasRole('volunteer') && (
+                          <Link
+                            href="/volunteer"
+                            className="flex items-center px-4 py-2 text-sm text-text-primary hover:bg-gray-50 transition-colors"
+                            onClick={() => setIsUserMenuOpen(false)}
+                          >
+                            <svg className="w-4 h-4 mr-3 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                            Volunteer Dashboard
+                          </Link>
+                        )}
+
+                        {hasRole('admin') && (
+                          <Link
+                            href="/admin"
+                            className="flex items-center px-4 py-2 text-sm text-text-primary hover:bg-gray-50 transition-colors"
+                            onClick={() => setIsUserMenuOpen(false)}
+                          >
+                            <svg className="w-4 h-4 mr-3 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                            </svg>
+                            Admin Dashboard
+                          </Link>
+                        )}
+
+                        <Link
+                          href="/profile"
+                          className="flex items-center px-4 py-2 text-sm text-text-primary hover:bg-gray-50 transition-colors"
+                          onClick={() => setIsUserMenuOpen(false)}
+                        >
+                          <svg className="w-4 h-4 mr-3 text-text-secondary" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                          </svg>
+                          My Profile
+                        </Link>
+                      </div>
+
+                      {/* Divider */}
+                      <div className="border-t border-gray-100 my-2"></div>
+
+                      {/* Logout */}
+                      <button
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          handleLogout();
+                        }}
+                        className="flex items-center w-full px-4 py-2 text-sm text-text-primary hover:bg-gray-50 transition-colors text-left"
+                      >
+                        <svg className="w-4 h-4 mr-3 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                        </svg>
+                        Sign Out
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <Link href="/auth/login">
+                  <Button variant="secondary" size="sm">
+                    Sign In
+                  </Button>
+                </Link>
+                <Link href="/auth/register">
+                  <Button variant="adoption" size="sm">
+                    Join Community
+                  </Button>
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Mobile menu button */}
@@ -202,22 +356,107 @@ function Header() {
           {/* Mobile Actions */}
           <div className="pt-4 pb-3 border-t border-gray-200">
             <div className="px-2 space-y-3">
-              <Link 
-                href="/auth/login"
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <Button variant="secondary" size="sm" className="w-full">
-                  Sign In
-                </Button>
-              </Link>
-              <Link 
-                href="/auth/register"
-                onClick={() => setIsMobileMenuOpen(false)}
-              >
-                <Button variant="adoption" size="sm" className="w-full">
-                  Join Community
-                </Button>
-              </Link>
+              {isLoading ? (
+                <div className="animate-pulse space-y-2">
+                  <div className="h-8 bg-gray-200 rounded"></div>
+                  <div className="h-8 bg-gray-200 rounded"></div>
+                </div>
+              ) : isAuthenticated ? (
+                <>
+                  <div className="px-3 py-2 text-sm text-text-secondary text-center">
+                    Welcome, {user?.name?.split(' ')[0] || 'User'}!
+                  </div>
+                  
+                  {/* User Menu Links */}
+                  <div className="space-y-2">
+                    <Link 
+                      href="/dashboard"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-text-primary hover:text-coral hover:bg-coral-bg transition-colors"
+                    >
+                      <svg className="w-4 h-4 mr-3 text-coral" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2H5a2 2 0 00-2-2z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5a2 2 0 012-2h4a2 2 0 012 2v6H8V5z" />
+                      </svg>
+                      Dashboard
+                    </Link>
+
+                    {hasRole('volunteer') && (
+                      <Link 
+                        href="/volunteer"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-text-primary hover:text-teal hover:bg-teal-bg transition-colors"
+                      >
+                        <svg className="w-4 h-4 mr-3 text-teal" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                        </svg>
+                        Volunteer Dashboard
+                      </Link>
+                    )}
+
+                    {hasRole('admin') && (
+                      <Link 
+                        href="/admin"
+                        onClick={() => setIsMobileMenuOpen(false)}
+                        className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-text-primary hover:text-purple-600 hover:bg-purple-50 transition-colors"
+                      >
+                        <svg className="w-4 h-4 mr-3 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                        </svg>
+                        Admin Dashboard
+                      </Link>
+                    )}
+
+                    <Link 
+                      href="/profile"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="flex items-center px-3 py-2 rounded-md text-sm font-medium text-text-primary hover:text-coral hover:bg-coral-bg transition-colors"
+                    >
+                      <svg className="w-4 h-4 mr-3 text-text-secondary" fill="currentColor" viewBox="0 0 24 24">
+                        <path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/>
+                      </svg>
+                      My Profile
+                    </Link>
+                  </div>
+
+                  {/* Logout Button */}
+                  <div className="pt-3 border-t border-gray-200">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      className="w-full"
+                      onClick={() => {
+                        setIsMobileMenuOpen(false);
+                        handleLogout();
+                      }}
+                    >
+                      <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
+                      </svg>
+                      Sign Out
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <Link 
+                    href="/auth/login"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <Button variant="secondary" size="sm" className="w-full">
+                      Sign In
+                    </Button>
+                  </Link>
+                  <Link 
+                    href="/auth/register"
+                    onClick={() => setIsMobileMenuOpen(false)}
+                  >
+                    <Button variant="adoption" size="sm" className="w-full">
+                      Join Community
+                    </Button>
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>

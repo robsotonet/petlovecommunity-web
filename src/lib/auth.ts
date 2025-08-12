@@ -1,8 +1,8 @@
 import { NextAuthOptions, User } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
-import bcrypt from 'bcryptjs';
 import { correlationService } from './services/CorrelationService';
 import { transactionManager } from './services/TransactionManager';
+import { authApiService } from './services/AuthApiService';
 
 // Extended user type for Pet Love Community
 interface PetLoveCommunityUser extends User {
@@ -17,42 +17,7 @@ interface PetLoveCommunityUser extends User {
   lastLogin: string;
 }
 
-// Mock user database - in production, this would be replaced with actual database
-const users = [
-  {
-    id: '1',
-    email: 'demo@petlovecommunity.com',
-    name: 'Demo User',
-    password: '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBSh8X8l8D8D8D', // 'password'
-    role: 'user' as const,
-    adoptionHistory: ['pet-1', 'pet-2'],
-    volunteeredEvents: ['event-1'],
-    createdAt: new Date('2024-01-01').toISOString(),
-    lastLogin: new Date().toISOString(),
-  },
-  {
-    id: '2', 
-    email: 'volunteer@petlovecommunity.com',
-    name: 'Jane Volunteer',
-    password: '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBSh8X8l8D8D8D', // 'password'
-    role: 'volunteer' as const,
-    adoptionHistory: [],
-    volunteeredEvents: ['event-1', 'event-2', 'event-3'],
-    createdAt: new Date('2024-02-01').toISOString(),
-    lastLogin: new Date().toISOString(),
-  },
-  {
-    id: '3',
-    email: 'admin@petlovecommunity.com', 
-    name: 'Admin User',
-    password: '$2a$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMQJqhN8/LewdBSh8X8l8D8D8D', // 'password'
-    role: 'admin' as const,
-    adoptionHistory: [],
-    volunteeredEvents: [],
-    createdAt: new Date('2024-01-01').toISOString(),
-    lastLogin: new Date().toISOString(),
-  }
-];
+// User data is now managed by UserService - no hardcoded users here
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -77,74 +42,37 @@ export const authOptions: NextAuthOptions = {
           }
 
           // Generate correlation context for auth operation
-          const correlationId = correlationService.generateCorrelationId();
-          correlationService.setContext({
-            correlationId,
-            sessionId: correlationService.generateSessionId(),
-            timestamp: Date.now(),
-            userId: undefined, // Will be set after successful auth
-            requestId: correlationService.generateRequestId(),
-          });
+          const correlationContext = correlationService.createContext(undefined, undefined);
+          const correlationId = correlationContext.correlationId;
 
-          // Create transaction for authentication
-          const transactionId = transactionManager.generateTransactionId();
-          const transaction = await transactionManager.startTransaction({
-            id: transactionId,
-            correlationId,
-            type: 'authentication',
-            status: 'pending',
-            data: { 
-              email: credentials.email,
-              timestamp: Date.now(),
-              userAgent: req?.headers?.['user-agent'] || 'unknown'
-            },
-            retryCount: 0,
-          });
+          // Log authentication attempt
+          const authData = { 
+            email: credentials.email,
+            timestamp: Date.now(),
+            userAgent: req?.headers?.['user-agent'] || 'unknown'
+          };
 
           console.log(`[Auth] Authentication attempt for ${credentials.email}`, {
             correlationId,
-            transactionId,
             timestamp: new Date().toISOString(),
           });
 
-          // Find user by email
-          const user = users.find(u => u.email === credentials.email);
+          // Use AuthApiService to validate credentials against backend
+          const user = await authApiService.validateUser({
+            email: credentials.email,
+            password: credentials.password
+          });
           
           if (!user) {
-            console.log('[Auth] User not found');
-            await transactionManager.completeTransaction(transactionId, 'failed', {
-              error: 'User not found',
-            });
-            return null;
-          }
-
-          // Verify password
-          const isValidPassword = await bcrypt.compare(credentials.password, user.password);
-          
-          if (!isValidPassword) {
-            console.log('[Auth] Invalid password');
-            await transactionManager.completeTransaction(transactionId, 'failed', {
-              error: 'Invalid password',
-            });
+            console.log('[Auth] Invalid credentials');
             return null;
           }
 
           // Update correlation context with user ID
-          correlationService.updateContext({ userId: user.id });
-
-          // Complete authentication transaction
-          await transactionManager.completeTransaction(transactionId, 'completed', {
-            userId: user.id,
-            email: user.email,
-            role: user.role,
-          });
-
-          // Update last login time (in production, this would update the database)
-          user.lastLogin = new Date().toISOString();
+          correlationService.updateContext(correlationContext.correlationId, { userId: user.id });
 
           console.log(`[Auth] Authentication successful for ${user.email}`, {
             correlationId,
-            transactionId,
             userId: user.id,
             role: user.role,
           });
@@ -153,13 +81,13 @@ export const authOptions: NextAuthOptions = {
           const authenticatedUser: PetLoveCommunityUser = {
             id: user.id,
             email: user.email,
-            name: user.name,
-            role: user.role,
-            adoptionHistory: user.adoptionHistory,
-            volunteeredEvents: user.volunteeredEvents,
+            name: `${user.firstName} ${user.lastName}`.trim(),
+            role: user.role === 'Free' ? 'user' : user.role.toLowerCase(), // Map backend role to frontend role
+            adoptionHistory: [], // Backend API user may not have these fields initially
+            volunteeredEvents: [], // Will be populated from backend if available
             correlationId,
             createdAt: user.createdAt,
-            lastLogin: user.lastLogin,
+            lastLogin: user.lastLoginAt || new Date().toISOString(),
           };
 
           return authenticatedUser;
@@ -167,21 +95,7 @@ export const authOptions: NextAuthOptions = {
         } catch (error) {
           console.error('[Auth] Authentication error:', error);
           
-          // Try to complete transaction with error
-          try {
-            const correlationContext = correlationService.getCurrentContext();
-            if (correlationContext) {
-              await transactionManager.completeTransaction(
-                correlationContext.correlationId, 
-                'failed', 
-                { 
-                  error: error instanceof Error ? error.message : 'Unknown auth error' 
-                }
-              );
-            }
-          } catch (transactionError) {
-            console.error('[Auth] Failed to complete failed transaction:', transactionError);
-          }
+          // Error already logged
           
           return null;
         }
@@ -217,13 +131,17 @@ export const authOptions: NextAuthOptions = {
         session.user.lastLogin = token.lastLogin as string;
 
         // Update correlation context with user session
-        correlationService.setContext({
-          correlationId: session.user.correlationId,
-          sessionId: correlationService.generateSessionId(),
-          timestamp: Date.now(),
-          userId: session.user.id,
-          requestId: correlationService.generateRequestId(),
-        });
+        const existingContext = correlationService.getContext(session.user.correlationId);
+        if (existingContext) {
+          correlationService.updateContext(session.user.correlationId, {
+            userId: session.user.id,
+            timestampMs: Date.now(),
+          });
+        } else {
+          // Create new context if it doesn't exist
+          const newContext = correlationService.createContext(session.user.id, undefined);
+          session.user.correlationId = newContext.correlationId;
+        }
       }
       
       return session;
@@ -231,8 +149,7 @@ export const authOptions: NextAuthOptions = {
 
     async signIn({ user, account, profile }) {
       try {
-        const correlationId = correlationService.getCurrentContext()?.correlationId || 
-                            correlationService.generateCorrelationId();
+        const correlationId = user.correlationId || correlationService.generateCorrelationId();
         
         console.log('[Auth] SignIn callback', {
           correlationId,
@@ -251,7 +168,7 @@ export const authOptions: NextAuthOptions = {
 
     async signOut({ session, token }) {
       try {
-        const correlationId = correlationService.getCurrentContext()?.correlationId ||
+        const correlationId = session?.user?.correlationId || token?.correlationId || 
                             correlationService.generateCorrelationId();
         
         console.log('[Auth] SignOut callback', {
@@ -286,8 +203,7 @@ export const authOptions: NextAuthOptions = {
 
   events: {
     async signIn({ user, account, profile, isNewUser }) {
-      const correlationId = correlationService.getCurrentContext()?.correlationId ||
-                          correlationService.generateCorrelationId();
+      const correlationId = user.correlationId || correlationService.generateCorrelationId();
       
       console.log('[Auth Event] User signed in', {
         correlationId,
@@ -302,7 +218,7 @@ export const authOptions: NextAuthOptions = {
     },
 
     async signOut({ session, token }) {
-      const correlationId = correlationService.getCurrentContext()?.correlationId ||
+      const correlationId = session?.user?.correlationId || token?.correlationId ||
                           correlationService.generateCorrelationId();
       
       console.log('[Auth Event] User signed out', {
@@ -314,11 +230,14 @@ export const authOptions: NextAuthOptions = {
 
     async session({ session, token }) {
       // Update correlation context on session check
-      if (session.user?.id) {
-        correlationService.updateContext({ 
-          userId: session.user.id,
-          timestamp: Date.now(),
-        });
+      if (session.user?.id && session.user?.correlationId) {
+        const existingContext = correlationService.getContext(session.user.correlationId);
+        if (existingContext) {
+          correlationService.updateContext(session.user.correlationId, { 
+            userId: session.user.id,
+            timestampMs: Date.now(),
+          });
+        }
       }
     }
   },
